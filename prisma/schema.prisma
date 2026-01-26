@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  name                String?
+  conversationSummary String?   // Rolling summary of all past conversations
+  createdAt           DateTime  @default(now())
+  lastSeenAt          DateTime  @default(now())
+
+  conversations       Conversation[]
+  messages            Message[]
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  userId    String
+  status    String   @default("ACTIVE") // ACTIVE or CLOSED
+  summary   String?  // Generated when conversation ends
+  createdAt DateTime @default(now())
+  endedAt   DateTime?
+
+  user      User      @relation(fields: [userId], references: [id])
+  messages  Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  userId         String
+  senderType     String   // USER or JOURNALIST
+  content        String   // Transcript text
+  createdAt      DateTime @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+}
+
+model GeneratedNewsletter {
+  id                    String   @id @default(uuid())
+  content               String   // The generated newsletter text
+  sourceConversationIds String   // JSON array of conversation IDs used
+  createdAt             DateTime @default(now())
+}
