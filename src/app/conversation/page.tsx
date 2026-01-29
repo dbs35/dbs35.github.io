@@ -234,8 +234,10 @@ function ConversationContent() {
 
         if (!mounted) return;
 
-        // Create VAD instance
+        // Create VAD instance with CDN paths for model and WASM files
         const vad = await MicVAD.new({
+          baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
+          onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/",
           onSpeechStart: () => {
             console.log("Speech started");
             setIsSpeaking(true);
