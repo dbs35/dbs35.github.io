@@ -18,6 +18,11 @@ interface Message {
   timestamp: Date;
 }
 
+interface Config {
+  communityName: string;
+  journalistName: string;
+}
+
 function ConversationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -27,12 +32,13 @@ function ConversationContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [summary, setSummary] = useState<string>("");
+  const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
 
   // Audio refs
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const vadRef = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null);
   const stateRef = useRef<ConversationState>(state);
+  const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -49,12 +55,71 @@ function ConversationContent() {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
     }
+    // Cancel Web Speech API if active
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    speechSynthRef.current = null;
   }, []);
 
-  // Play audio and handle state transitions
-  const playAudio = useCallback(
-    (audioData: string): Promise<void> => {
+  // Web Speech API fallback for TTS (free, offline)
+  const speakWithWebSpeechAPI = useCallback(
+    (text: string): Promise<void> => {
       return new Promise((resolve, reject) => {
+        if (!("speechSynthesis" in window)) {
+          reject(new Error("Web Speech API not supported"));
+          return;
+        }
+
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        // Try to find a good English voice
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(
+          (v) => v.lang.startsWith("en") && v.localService
+        ) || voices.find((v) => v.lang.startsWith("en"));
+        if (englishVoice) {
+          utterance.voice = englishVoice;
+        }
+
+        utterance.onend = () => {
+          speechSynthRef.current = null;
+          resolve();
+        };
+
+        utterance.onerror = (e) => {
+          speechSynthRef.current = null;
+          reject(e);
+        };
+
+        speechSynthRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      });
+    },
+    []
+  );
+
+  // Play audio with OpenAI TTS, fall back to Web Speech API if unavailable
+  const playAudio = useCallback(
+    (audioData: string | undefined, fallbackText?: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        // If no audio data, try Web Speech API fallback
+        if (!audioData) {
+          if (fallbackText) {
+            console.log("No audio data, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            resolve(); // No audio and no text, just resolve
+          }
+          return;
+        }
+
         const audio = new Audio(audioData);
         currentAudioRef.current = audio;
 
@@ -65,21 +130,41 @@ function ConversationContent() {
 
         audio.onerror = (e) => {
           currentAudioRef.current = null;
-          reject(e);
+          // Fall back to Web Speech API on audio error
+          if (fallbackText) {
+            console.log("Audio playback failed, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            reject(e);
+          }
         };
 
-        audio.play().catch(reject);
+        audio.play().catch((playError) => {
+          currentAudioRef.current = null;
+          // Fall back to Web Speech API on play error
+          if (fallbackText) {
+            console.log("Audio play failed, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            reject(playError);
+          }
+        });
       });
     },
-    []
+    [speakWithWebSpeechAPI]
   );
 
-  // Stop current audio playback
+  // Stop current audio playback (both OpenAI audio and Web Speech API)
   const stopAudio = useCallback(() => {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current.currentTime = 0;
       currentAudioRef.current = null;
+    }
+    // Also cancel Web Speech API if active
+    if (speechSynthRef.current) {
+      window.speechSynthesis.cancel();
+      speechSynthRef.current = null;
     }
   }, []);
 
@@ -118,9 +203,9 @@ function ConversationContent() {
           vadRef.current.pause();
         }
 
-        // Play response
+        // Play response (with Web Speech API fallback)
         setState("ai_speaking");
-        await playAudio(data.journalistAudio);
+        await playAudio(data.journalistAudio, data.journalistText);
 
         // Resume VAD for listening
         setState("listening");
@@ -150,13 +235,21 @@ function ConversationContent() {
 
     const initializeConversation = async () => {
       try {
+        // Fetch config
+        fetch("/api/config")
+          .then((res) => res.json())
+          .then((data) => setConfig(data))
+          .catch(() => setConfig({ communityName: "your community", journalistName: "Journalist" }));
+
         // Dynamically import VAD to avoid SSR issues
         const { MicVAD } = await import("@ricky0123/vad-web");
 
         if (!mounted) return;
 
-        // Create VAD instance
+        // Create VAD instance with CDN paths for model and WASM files
         const vad = await MicVAD.new({
+          baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
+          onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
           onSpeechStart: () => {
             console.log("Speech started");
             setIsSpeaking(true);
@@ -196,16 +289,26 @@ function ConversationContent() {
         // Pause VAD initially while we play the greeting
         vad.pause();
 
-        // Fetch greeting and start
+        // Fetch conversation data and start
         const response = await fetch(`/api/conversation/${conversationId}`);
         if (response.ok) {
           const data = await response.json();
-          if (data.greetingAudio) {
-            setMessages([
-              { sender: "journalist", content: data.greetingText, timestamp: new Date() },
-            ]);
+
+          // Load existing messages
+          if (data.messages && data.messages.length > 0) {
+            setMessages(
+              data.messages.map((msg: { sender: string; content: string; timestamp: string }) => ({
+                sender: msg.sender as "user" | "journalist",
+                content: msg.content,
+                timestamp: new Date(msg.timestamp),
+              }))
+            );
+          }
+
+          // Play greeting audio if this is a new conversation (with Web Speech API fallback)
+          if (data.greetingAudio || data.greetingText) {
             setState("ai_speaking");
-            await playAudio(data.greetingAudio);
+            await playAudio(data.greetingAudio, data.greetingText);
           }
         }
 
@@ -275,7 +378,7 @@ function ConversationContent() {
         return (
           <div className="flex flex-col items-center gap-2">
             <div className="text-4xl animate-pulse">🔊</div>
-            <p className="text-blue-600 font-medium">Jamie is speaking...</p>
+            <p className="text-blue-600 font-medium">{config.journalistName} is speaking...</p>
             <p className="text-xs text-gray-500">Start talking to interrupt</p>
           </div>
         );
@@ -400,6 +503,16 @@ function ConversationContent() {
           </div>
         )}
 
+        {/* Summary (shown when conversation ends) */}
+        {state === "ended" && summary && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h2 className="text-sm font-medium text-green-800 uppercase tracking-wide mb-2">
+              Conversation Summary
+            </h2>
+            <p className="text-gray-700 whitespace-pre-wrap">{summary}</p>
+          </div>
+        )}
+
         {/* Transcript */}
         <div className="flex-1 overflow-y-auto space-y-4 pb-4">
           <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
@@ -415,7 +528,7 @@ function ConversationContent() {
               }`}
             >
               <div className="text-xs text-gray-500 mb-1">
-                {msg.sender === "journalist" ? "🎙️ Jamie" : "👤 You"}
+                {msg.sender === "journalist" ? `🎙️ ${config.journalistName}` : "👤 You"}
               </div>
               <p className="text-gray-800">{msg.content}</p>
             </div>

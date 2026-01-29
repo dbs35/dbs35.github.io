@@ -3,9 +3,17 @@ import prisma from "@/lib/db";
 import { getSummaryPrompt } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load client to avoid errors if API key is not set
+let anthropic: Anthropic | null = null;
+
+function getAnthropic(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +60,7 @@ export async function POST(request: NextRequest) {
       .join("\n\n");
 
     // Generate summary using Claude
-    const summaryResponse = await anthropic.messages.create({
+    const summaryResponse = await getAnthropic().messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 500,
       messages: [

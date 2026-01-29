@@ -4,13 +4,27 @@ import { getJournalistSystemPrompt } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load clients to avoid errors if API keys are not set
+let anthropic: Anthropic | null = null;
+let openai: OpenAI | null = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getAnthropic(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+}
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,7 +76,7 @@ export async function POST(request: NextRequest) {
     const audioBuffer = Buffer.from(await audioBlob.arrayBuffer());
     const audioFile = new File([audioBuffer], "audio.webm", { type: "audio/webm" });
 
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAI().audio.transcriptions.create({
       model: "whisper-1",
       file: audioFile,
       language: "en",
@@ -106,7 +120,7 @@ export async function POST(request: NextRequest) {
       conversation.user.conversationSummary
     );
 
-    const claudeResponse = await anthropic.messages.create({
+    const claudeResponse = await getAnthropic().messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 300,
       system: systemPrompt,
@@ -119,7 +133,7 @@ export async function POST(request: NextRequest) {
         : "I'm sorry, I didn't catch that. Could you tell me more?";
 
     // Generate audio response using OpenAI TTS
-    const audioResponse = await openai.audio.speech.create({
+    const audioResponse = await getOpenAI().audio.speech.create({
       model: "tts-1",
       voice: "nova",
       input: journalistText,
@@ -142,7 +156,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       userTranscript: userText,
       journalistText,
-      journalistAudio: `data:audio/mp3;base64,${responseAudioBase64}`,
+      journalistAudio: `data:audio/mpeg;base64,${responseAudioBase64}`,
     });
   } catch (error) {
     console.error("Error processing message:", error);

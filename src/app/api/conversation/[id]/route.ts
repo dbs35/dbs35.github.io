@@ -4,13 +4,27 @@ import { CONFIG, getGreetingPrompt, getJournalistSystemPrompt } from "@/lib/conf
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load clients to avoid errors if API keys are not set
+let anthropic: Anthropic | null = null;
+let openai: OpenAI | null = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getAnthropic(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+}
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+}
 
 export async function GET(
   request: NextRequest,
@@ -47,7 +61,7 @@ export async function GET(
         conversation.user.conversationSummary
       );
 
-      const greetingResponse = await anthropic.messages.create({
+      const greetingResponse = await getAnthropic().messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 200,
         system: systemPrompt,
@@ -65,7 +79,7 @@ export async function GET(
           : `Hi! I'm ${CONFIG.journalistName}. What's happening at ${CONFIG.communityName} these days?`;
 
       // Generate audio for the greeting
-      const audioResponse = await openai.audio.speech.create({
+      const audioResponse = await getOpenAI().audio.speech.create({
         model: "tts-1",
         voice: "nova",
         input: greetingText,
@@ -91,7 +105,7 @@ export async function GET(
         userName: conversation.user.name,
         status: conversation.status,
         greetingText,
-        greetingAudio: `data:audio/mp3;base64,${audioBase64}`,
+        greetingAudio: `data:audio/mpeg;base64,${audioBase64}`,
         messages: [
           {
             sender: "journalist",
@@ -102,12 +116,38 @@ export async function GET(
       });
     }
 
-    // Return existing messages
+    // Return existing messages, including audio for the greeting if this is a new conversation
+    // (only one journalist message = just started, need to play greeting)
+    const firstMessage = conversation.messages[0];
+    let greetingAudio: string | undefined;
+    let greetingText: string | undefined;
+
+    // Generate audio for the greeting message if it's a new conversation (only greeting message exists)
+    if (
+      conversation.messages.length === 1 &&
+      firstMessage &&
+      firstMessage.senderType === "JOURNALIST"
+    ) {
+      greetingText = firstMessage.content;
+      const audioResponse = await getOpenAI().audio.speech.create({
+        model: "tts-1",
+        voice: "nova",
+        input: greetingText,
+        response_format: "mp3",
+      });
+
+      const audioBuffer = await audioResponse.arrayBuffer();
+      const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+      greetingAudio = `data:audio/mpeg;base64,${audioBase64}`;
+    }
+
     return NextResponse.json({
       conversationId: conversation.id,
       userId: conversation.user.id,
       userName: conversation.user.name,
       status: conversation.status,
+      greetingText,
+      greetingAudio,
       messages: conversation.messages.map((msg) => ({
         sender: msg.senderType === "USER" ? "user" : "journalist",
         content: msg.content,
