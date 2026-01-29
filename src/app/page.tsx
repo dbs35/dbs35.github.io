@@ -64,9 +64,8 @@ export default function Home() {
             Community Journalist
           </h1>
           <p className="text-gray-600 mb-6">
-            Hi! I&apos;m {config.journalistName}, your community journalist. I&apos;d love to hear
-            what&apos;s happening at {config.communityName}. Share your stories,
-            ideas, or just chat about what&apos;s on your mind.
+            Hi! I&apos;m {config.journalistName}, the {config.communityName} community journalist. I&apos;d love to hear
+            what&apos;s happening. Share your stories, ideas, or just tell me what&apos;s on your mind.
           </p>
         </div>
 
