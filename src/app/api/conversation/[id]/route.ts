@@ -102,12 +102,38 @@ export async function GET(
       });
     }
 
-    // Return existing messages
+    // Return existing messages, including audio for the greeting if this is a new conversation
+    // (only one journalist message = just started, need to play greeting)
+    const firstMessage = conversation.messages[0];
+    let greetingAudio: string | undefined;
+    let greetingText: string | undefined;
+
+    // Generate audio for the greeting message if it's a new conversation (only greeting message exists)
+    if (
+      conversation.messages.length === 1 &&
+      firstMessage &&
+      firstMessage.senderType === "JOURNALIST"
+    ) {
+      greetingText = firstMessage.content;
+      const audioResponse = await openai.audio.speech.create({
+        model: "tts-1",
+        voice: "nova",
+        input: greetingText,
+        response_format: "mp3",
+      });
+
+      const audioBuffer = await audioResponse.arrayBuffer();
+      const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+      greetingAudio = `data:audio/mp3;base64,${audioBase64}`;
+    }
+
     return NextResponse.json({
       conversationId: conversation.id,
       userId: conversation.user.id,
       userName: conversation.user.name,
       status: conversation.status,
+      greetingText,
+      greetingAudio,
       messages: conversation.messages.map((msg) => ({
         sender: msg.senderType === "USER" ? "user" : "journalist",
         content: msg.content,
