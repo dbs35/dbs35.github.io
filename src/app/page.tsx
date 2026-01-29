@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
+interface Config {
+  communityName: string;
+  journalistName: string;
+}
 
 export default function Home() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [config, setConfig] = useState<Config | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then((data) => setConfig(data))
+      .catch(() => setConfig({ communityName: "your community", journalistName: "Jamie" }));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,13 +40,20 @@ export default function Home() {
       }
 
       const data = await response.json();
-      // Navigate to conversation page with the conversation ID
       router.push(`/conversation?id=${data.conversationId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setIsLoading(false);
     }
   };
+
+  if (!config) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
+        <div className="animate-spin text-4xl">⏳</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center p-4">
@@ -44,8 +64,8 @@ export default function Home() {
             Community Journalist
           </h1>
           <p className="text-gray-600 mb-6">
-            Hi! I&apos;m Jamie, your community journalist. I&apos;d love to hear
-            what&apos;s happening at Lincoln Elementary. Share your stories,
+            Hi! I&apos;m {config.journalistName}, your community journalist. I&apos;d love to hear
+            what&apos;s happening at {config.communityName}. Share your stories,
             ideas, or just chat about what&apos;s on your mind.
           </p>
         </div>
