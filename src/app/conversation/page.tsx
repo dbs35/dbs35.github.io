@@ -26,36 +26,23 @@ function ConversationContent() {
   const [state, setState] = useState<ConversationState>("loading");
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
-  const [volumeLevel, setVolumeLevel] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Audio refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const vadRef = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null);
+  const stateRef = useRef<ConversationState>(state);
 
-  // Voice detection refs
-  const isSpeakingRef = useRef(false);
-  const silenceStartRef = useRef<number | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-
-  // Constants
-  const SILENCE_THRESHOLD = 0.02;
-  const SILENCE_DURATION_MS = 2500;
-  const SPEECH_THRESHOLD = 0.03;
+  // Keep stateRef in sync with state
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+    if (vadRef.current) {
+      vadRef.current.destroy();
+      vadRef.current = null;
     }
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
@@ -95,31 +82,6 @@ function ConversationContent() {
     }
   }, []);
 
-  // Start recording
-  const startRecording = useCallback(() => {
-    audioChunksRef.current = [];
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
-      mediaRecorderRef.current.start();
-    }
-  }, []);
-
-  // Stop recording and return audio blob
-  const stopRecording = useCallback((): Promise<Blob> => {
-    return new Promise((resolve) => {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
-        resolve(new Blob(audioChunksRef.current, { type: "audio/webm" }));
-        return;
-      }
-
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        resolve(audioBlob);
-      };
-
-      mediaRecorderRef.current.stop();
-    });
-  }, []);
-
   // Send audio to backend
   const sendAudio = useCallback(
     async (audioBlob: Blob) => {
@@ -150,74 +112,33 @@ function ConversationContent() {
           { sender: "journalist", content: data.journalistText, timestamp: new Date() },
         ]);
 
+        // Pause VAD while AI is speaking
+        if (vadRef.current) {
+          vadRef.current.pause();
+        }
+
         // Play response
         setState("ai_speaking");
         await playAudio(data.journalistAudio);
+
+        // Resume VAD for listening
         setState("listening");
-        startRecording();
+        if (vadRef.current) {
+          vadRef.current.start();
+        }
       } catch (err) {
         console.error("Error sending audio:", err);
         setError("Failed to process your response. Please try again.");
         setState("listening");
-        startRecording();
-      }
-    },
-    [conversationId, playAudio, startRecording]
-  );
-
-  // Voice activity detection loop
-  const detectVoiceActivity = useCallback(() => {
-    if (!analyserRef.current) return;
-
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteFrequencyData(dataArray);
-
-    // Calculate average volume
-    const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length / 255;
-    setVolumeLevel(average);
-
-    // State-specific handling
-    if (state === "ai_speaking") {
-      // Check if user is trying to interrupt
-      if (average > SPEECH_THRESHOLD) {
-        stopAudio();
-        setState("interrupted");
-        // Brief pause then switch to listening
-        setTimeout(() => {
-          setState("listening");
-          startRecording();
-        }, 300);
-      }
-    } else if (state === "listening") {
-      if (average > SILENCE_THRESHOLD) {
-        // User is speaking
-        isSpeakingRef.current = true;
-        silenceStartRef.current = null;
-      } else if (isSpeakingRef.current) {
-        // User was speaking but now silent
-        if (!silenceStartRef.current) {
-          silenceStartRef.current = Date.now();
-        } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION_MS) {
-          // Silence duration exceeded - process the audio
-          isSpeakingRef.current = false;
-          silenceStartRef.current = null;
-
-          stopRecording().then((audioBlob) => {
-            if (audioBlob.size > 0) {
-              sendAudio(audioBlob);
-            } else {
-              // No audio recorded, keep listening
-              startRecording();
-            }
-          });
+        if (vadRef.current) {
+          vadRef.current.start();
         }
       }
-    }
+    },
+    [conversationId, playAudio]
+  );
 
-    animationFrameRef.current = requestAnimationFrame(detectVoiceActivity);
-  }, [state, stopAudio, startRecording, stopRecording, sendAudio]);
-
-  // Initialize audio and start conversation
+  // Initialize VAD and start conversation
   useEffect(() => {
     if (!conversationId) {
       router.push("/");
@@ -228,40 +149,53 @@ function ConversationContent() {
 
     const initializeConversation = async () => {
       try {
-        // Get conversation data from URL params (set by redirect)
-        // We need to fetch the greeting from the API if not in params
-        // For now, assume we need to make another request or the greeting was passed
-
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-
-        // Set up audio context and analyser
-        const audioContext = new AudioContext();
-        audioContextRef.current = audioContext;
-
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        analyserRef.current = analyser;
-
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        // Set up media recorder
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
+        // Dynamically import VAD to avoid SSR issues
+        const { MicVAD } = await import("@ricky0123/vad-web");
 
         if (!mounted) return;
 
+        // Create VAD instance
+        const vad = await MicVAD.new({
+          onSpeechStart: () => {
+            console.log("Speech started");
+            setIsSpeaking(true);
+
+            // If AI is speaking, interrupt it
+            if (stateRef.current === "ai_speaking") {
+              stopAudio();
+              setState("interrupted");
+              setTimeout(() => {
+                setState("listening");
+              }, 300);
+            }
+          },
+          onSpeechEnd: (audio: Float32Array) => {
+            console.log("Speech ended, audio length:", audio.length);
+            setIsSpeaking(false);
+
+            // Only process if we're in listening state
+            if (stateRef.current === "listening" || stateRef.current === "interrupted") {
+              // Convert Float32Array to WAV blob
+              const wavBlob = float32ToWav(audio, 16000);
+              sendAudio(wavBlob);
+            }
+          },
+          onVADMisfire: () => {
+            console.log("VAD misfire (too short)");
+            setIsSpeaking(false);
+          },
+          positiveSpeechThreshold: 0.8,
+          negativeSpeechThreshold: 0.5,
+        });
+
+        vadRef.current = vad;
+
+        if (!mounted) return;
+
+        // Pause VAD initially while we play the greeting
+        vad.pause();
+
         // Fetch greeting and start
-        // Note: The greeting was already created when conversation started
-        // We need to fetch it or have it passed through
         const response = await fetch(`/api/conversation/${conversationId}`);
         if (response.ok) {
           const data = await response.json();
@@ -276,8 +210,9 @@ function ConversationContent() {
 
         if (!mounted) return;
 
+        // Start listening
         setState("listening");
-        startRecording();
+        vad.start();
       } catch (err) {
         console.error("Error initializing:", err);
         if (mounted) {
@@ -297,20 +232,7 @@ function ConversationContent() {
       mounted = false;
       cleanup();
     };
-  }, [conversationId, router, cleanup, playAudio, startRecording]);
-
-  // Run voice detection loop
-  useEffect(() => {
-    if (state === "ai_speaking" || state === "listening") {
-      animationFrameRef.current = requestAnimationFrame(detectVoiceActivity);
-    }
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [state, detectVoiceActivity]);
+  }, [conversationId, router, cleanup, playAudio, sendAudio, stopAudio]);
 
   // End conversation handler
   const handleEndConversation = async () => {
@@ -352,9 +274,13 @@ function ConversationContent() {
       case "listening":
         return (
           <div className="flex flex-col items-center gap-2">
-            <div className="text-4xl">🎤</div>
-            <p className="text-green-600 font-medium">Listening...</p>
-            <p className="text-xs text-gray-500">Speak now</p>
+            <div className={`text-4xl ${isSpeaking ? "animate-pulse" : ""}`}>🎤</div>
+            <p className="text-green-600 font-medium">
+              {isSpeaking ? "Listening to you..." : "Listening..."}
+            </p>
+            <p className="text-xs text-gray-500">
+              {isSpeaking ? "Keep talking..." : "Speak now"}
+            </p>
           </div>
         );
       case "processing":
@@ -402,29 +328,24 @@ function ConversationContent() {
     }
   };
 
-  // Volume visualizer
-  const renderVolumeIndicator = () => {
-    if (state !== "listening" && state !== "ai_speaking") return null;
-
-    const bars = 5;
-    const activeHeight = Math.floor(volumeLevel * 100);
+  // Speaking indicator
+  const renderSpeakingIndicator = () => {
+    if (state !== "listening") return null;
 
     return (
-      <div className="flex items-end justify-center gap-1 h-12 my-4">
-        {Array.from({ length: bars }).map((_, i) => {
-          const barHeight = Math.min(100, activeHeight * (1 + i * 0.2));
-          return (
-            <div
-              key={i}
-              className={`w-2 rounded-full transition-all duration-75 ${
-                state === "listening" ? "bg-green-500" : "bg-blue-500"
-              }`}
-              style={{
-                height: `${Math.max(8, barHeight)}%`,
-              }}
-            />
-          );
-        })}
+      <div className="flex items-center justify-center gap-1 h-12 my-4">
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className={`w-2 rounded-full transition-all duration-150 ${
+              isSpeaking ? "bg-green-500" : "bg-gray-300"
+            }`}
+            style={{
+              height: isSpeaking ? `${20 + Math.random() * 30}px` : "8px",
+              animationDelay: `${i * 0.1}s`,
+            }}
+          />
+        ))}
       </div>
     );
   };
@@ -453,8 +374,8 @@ function ConversationContent() {
         {/* State indicator */}
         <div className="flex-shrink-0 py-8">{renderStateIndicator()}</div>
 
-        {/* Volume indicator */}
-        {renderVolumeIndicator()}
+        {/* Speaking indicator */}
+        {renderSpeakingIndicator()}
 
         {/* Error message */}
         {error && state !== "error" && (
@@ -494,13 +415,51 @@ function ConversationContent() {
   );
 }
 
+// Helper function to convert Float32Array to WAV blob
+function float32ToWav(samples: Float32Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  // WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  // Write audio data
+  const offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 export default function ConversationPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
-        <div className="animate-spin text-4xl">⏳</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
+          <div className="animate-spin text-4xl">⏳</div>
+        </div>
+      }
+    >
       <ConversationContent />
     </Suspense>
   );
