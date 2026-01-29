@@ -410,12 +410,20 @@ function ConversationContent() {
         );
       case "ended":
         return (
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-4">
             <div className="text-4xl">👋</div>
-            <p className="text-gray-600 font-medium">Conversation ended</p>
+            <p className="text-gray-600 font-medium">Thanks for chatting!</p>
+            {summary && (
+              <div className="w-full max-w-md bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-800 mb-2">
+                  Conversation Summary
+                </h3>
+                <p className="text-gray-700 text-sm">{summary}</p>
+              </div>
+            )}
             <button
               onClick={() => router.push("/")}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Start New Conversation
             </button>
