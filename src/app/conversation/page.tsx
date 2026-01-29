@@ -195,14 +195,24 @@ function ConversationContent() {
         // Pause VAD initially while we play the greeting
         vad.pause();
 
-        // Fetch greeting and start
+        // Fetch conversation data and start
         const response = await fetch(`/api/conversation/${conversationId}`);
         if (response.ok) {
           const data = await response.json();
+
+          // Load existing messages
+          if (data.messages && data.messages.length > 0) {
+            setMessages(
+              data.messages.map((msg: { sender: string; content: string; timestamp: string }) => ({
+                sender: msg.sender as "user" | "journalist",
+                content: msg.content,
+                timestamp: new Date(msg.timestamp),
+              }))
+            );
+          }
+
+          // Play greeting audio if this is a new conversation
           if (data.greetingAudio) {
-            setMessages([
-              { sender: "journalist", content: data.greetingText, timestamp: new Date() },
-            ]);
             setState("ai_speaking");
             await playAudio(data.greetingAudio);
           }
