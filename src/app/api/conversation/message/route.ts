@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       userTranscript: userText,
       journalistText,
-      journalistAudio: `data:audio/mp3;base64,${responseAudioBase64}`,
+      journalistAudio: `data:audio/mpeg;base64,${responseAudioBase64}`,
     });
   } catch (error) {
     console.error("Error processing message:", error);
