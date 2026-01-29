@@ -4,13 +4,27 @@ import { CONFIG, getGreetingPrompt, getJournalistSystemPrompt } from "@/lib/conf
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load clients to avoid errors if API keys are not set
+let anthropic: Anthropic | null = null;
+let openai: OpenAI | null = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getAnthropic(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+}
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+}
 
 export async function GET(
   request: NextRequest,
@@ -47,7 +61,7 @@ export async function GET(
         conversation.user.conversationSummary
       );
 
-      const greetingResponse = await anthropic.messages.create({
+      const greetingResponse = await getAnthropic().messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 200,
         system: systemPrompt,
@@ -65,7 +79,7 @@ export async function GET(
           : `Hi! I'm ${CONFIG.journalistName}. What's happening at ${CONFIG.communityName} these days?`;
 
       // Generate audio for the greeting
-      const audioResponse = await openai.audio.speech.create({
+      const audioResponse = await getOpenAI().audio.speech.create({
         model: "tts-1",
         voice: "nova",
         input: greetingText,
@@ -115,7 +129,7 @@ export async function GET(
       firstMessage.senderType === "JOURNALIST"
     ) {
       greetingText = firstMessage.content;
-      const audioResponse = await openai.audio.speech.create({
+      const audioResponse = await getOpenAI().audio.speech.create({
         model: "tts-1",
         voice: "nova",
         input: greetingText,
