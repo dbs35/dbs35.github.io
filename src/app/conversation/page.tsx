@@ -38,6 +38,7 @@ function ConversationContent() {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const vadRef = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null);
   const stateRef = useRef<ConversationState>(state);
+  const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -54,12 +55,71 @@ function ConversationContent() {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
     }
+    // Cancel Web Speech API if active
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    speechSynthRef.current = null;
   }, []);
 
-  // Play audio and handle state transitions
-  const playAudio = useCallback(
-    (audioData: string): Promise<void> => {
+  // Web Speech API fallback for TTS (free, offline)
+  const speakWithWebSpeechAPI = useCallback(
+    (text: string): Promise<void> => {
       return new Promise((resolve, reject) => {
+        if (!("speechSynthesis" in window)) {
+          reject(new Error("Web Speech API not supported"));
+          return;
+        }
+
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        // Try to find a good English voice
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(
+          (v) => v.lang.startsWith("en") && v.localService
+        ) || voices.find((v) => v.lang.startsWith("en"));
+        if (englishVoice) {
+          utterance.voice = englishVoice;
+        }
+
+        utterance.onend = () => {
+          speechSynthRef.current = null;
+          resolve();
+        };
+
+        utterance.onerror = (e) => {
+          speechSynthRef.current = null;
+          reject(e);
+        };
+
+        speechSynthRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      });
+    },
+    []
+  );
+
+  // Play audio with OpenAI TTS, fall back to Web Speech API if unavailable
+  const playAudio = useCallback(
+    (audioData: string | undefined, fallbackText?: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        // If no audio data, try Web Speech API fallback
+        if (!audioData) {
+          if (fallbackText) {
+            console.log("No audio data, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            resolve(); // No audio and no text, just resolve
+          }
+          return;
+        }
+
         const audio = new Audio(audioData);
         currentAudioRef.current = audio;
 
@@ -70,21 +130,41 @@ function ConversationContent() {
 
         audio.onerror = (e) => {
           currentAudioRef.current = null;
-          reject(e);
+          // Fall back to Web Speech API on audio error
+          if (fallbackText) {
+            console.log("Audio playback failed, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            reject(e);
+          }
         };
 
-        audio.play().catch(reject);
+        audio.play().catch((playError) => {
+          currentAudioRef.current = null;
+          // Fall back to Web Speech API on play error
+          if (fallbackText) {
+            console.log("Audio play failed, using Web Speech API fallback");
+            speakWithWebSpeechAPI(fallbackText).then(resolve).catch(reject);
+          } else {
+            reject(playError);
+          }
+        });
       });
     },
-    []
+    [speakWithWebSpeechAPI]
   );
 
-  // Stop current audio playback
+  // Stop current audio playback (both OpenAI audio and Web Speech API)
   const stopAudio = useCallback(() => {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current.currentTime = 0;
       currentAudioRef.current = null;
+    }
+    // Also cancel Web Speech API if active
+    if (speechSynthRef.current) {
+      window.speechSynthesis.cancel();
+      speechSynthRef.current = null;
     }
   }, []);
 
@@ -123,9 +203,9 @@ function ConversationContent() {
           vadRef.current.pause();
         }
 
-        // Play response
+        // Play response (with Web Speech API fallback)
         setState("ai_speaking");
-        await playAudio(data.journalistAudio);
+        await playAudio(data.journalistAudio, data.journalistText);
 
         // Resume VAD for listening
         setState("listening");
@@ -166,8 +246,10 @@ function ConversationContent() {
 
         if (!mounted) return;
 
-        // Create VAD instance
+        // Create VAD instance with CDN paths for model and WASM files
         const vad = await MicVAD.new({
+          baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
+          onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
           onSpeechStart: () => {
             console.log("Speech started");
             setIsSpeaking(true);
@@ -223,10 +305,10 @@ function ConversationContent() {
             );
           }
 
-          // Play greeting audio if this is a new conversation
-          if (data.greetingAudio) {
+          // Play greeting audio if this is a new conversation (with Web Speech API fallback)
+          if (data.greetingAudio || data.greetingText) {
             setState("ai_speaking");
-            await playAudio(data.greetingAudio);
+            await playAudio(data.greetingAudio, data.greetingText);
           }
         }
 
