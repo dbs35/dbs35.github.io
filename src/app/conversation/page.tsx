@@ -19,6 +19,11 @@ interface Message {
   timestamp: Date;
 }
 
+interface Config {
+  communityName: string;
+  journalistName: string;
+}
+
 function ConversationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -28,6 +33,7 @@ function ConversationContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
   const [summary, setSummary] = useState<string>("");
 
   // Audio refs
@@ -234,6 +240,61 @@ function ConversationContent() {
 
     const fetchConversationData = async () => {
       try {
+        // Fetch config
+        fetch("/api/config")
+          .then((res) => res.json())
+          .then((data) => setConfig(data))
+          .catch(() => setConfig({ communityName: "your community", journalistName: "Journalist" }));
+
+        // Dynamically import VAD to avoid SSR issues
+        const { MicVAD } = await import("@ricky0123/vad-web");
+
+        if (!mounted) return;
+
+        // Create VAD instance with CDN paths for model and WASM files
+        const vad = await MicVAD.new({
+          baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
+          onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
+          onSpeechStart: () => {
+            console.log("Speech started");
+            setIsSpeaking(true);
+
+            // If AI is speaking, interrupt it
+            if (stateRef.current === "ai_speaking") {
+              stopAudio();
+              setState("interrupted");
+              setTimeout(() => {
+                setState("listening");
+              }, 300);
+            }
+          },
+          onSpeechEnd: (audio: Float32Array) => {
+            console.log("Speech ended, audio length:", audio.length);
+            setIsSpeaking(false);
+
+            // Only process if we're in listening state
+            if (stateRef.current === "listening" || stateRef.current === "interrupted") {
+              // Convert Float32Array to WAV blob
+              const wavBlob = float32ToWav(audio, 16000);
+              sendAudio(wavBlob);
+            }
+          },
+          onVADMisfire: () => {
+            console.log("VAD misfire (too short)");
+            setIsSpeaking(false);
+          },
+          positiveSpeechThreshold: 0.8,
+          negativeSpeechThreshold: 0.5,
+        });
+
+        vadRef.current = vad;
+
+        if (!mounted) return;
+
+        // Pause VAD initially while we play the greeting
+        vad.pause();
+
+        // Fetch conversation data and start
         const response = await fetch(`/api/conversation/${conversationId}`);
         if (response.ok) {
           const data = await response.json();
@@ -408,7 +469,7 @@ function ConversationContent() {
         return (
           <div className="flex flex-col items-center gap-2">
             <div className="text-4xl animate-pulse">🔊</div>
-            <p className="text-blue-600 font-medium">Jamie is speaking...</p>
+            <p className="text-blue-600 font-medium">{config.journalistName} is speaking...</p>
             <p className="text-xs text-gray-500">Start talking to interrupt</p>
           </div>
         );
@@ -440,12 +501,20 @@ function ConversationContent() {
         );
       case "ended":
         return (
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-4">
             <div className="text-4xl">👋</div>
-            <p className="text-gray-600 font-medium">Conversation ended</p>
+            <p className="text-gray-600 font-medium">Thanks for chatting!</p>
+            {summary && (
+              <div className="w-full max-w-md bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-800 mb-2">
+                  Conversation Summary
+                </h3>
+                <p className="text-gray-700 text-sm">{summary}</p>
+              </div>
+            )}
             <button
               onClick={() => router.push("/")}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Start New Conversation
             </button>
@@ -550,7 +619,7 @@ function ConversationContent() {
               }`}
             >
               <div className="text-xs text-gray-500 mb-1">
-                {msg.sender === "journalist" ? "🎙️ Jamie" : "👤 You"}
+                {msg.sender === "journalist" ? `🎙️ ${config.journalistName}` : "👤 You"}
               </div>
               <p className="text-gray-800">{msg.content}</p>
             </div>
