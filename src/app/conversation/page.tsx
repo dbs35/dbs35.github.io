@@ -18,6 +18,11 @@ interface Message {
   timestamp: Date;
 }
 
+interface Config {
+  communityName: string;
+  journalistName: string;
+}
+
 function ConversationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -27,6 +32,7 @@ function ConversationContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
 
   // Audio refs
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -149,6 +155,12 @@ function ConversationContent() {
 
     const initializeConversation = async () => {
       try {
+        // Fetch config
+        fetch("/api/config")
+          .then((res) => res.json())
+          .then((data) => setConfig(data))
+          .catch(() => setConfig({ communityName: "your community", journalistName: "Journalist" }));
+
         // Dynamically import VAD to avoid SSR issues
         const { MicVAD } = await import("@ricky0123/vad-web");
 
@@ -277,7 +289,7 @@ function ConversationContent() {
         return (
           <div className="flex flex-col items-center gap-2">
             <div className="text-4xl animate-pulse">🔊</div>
-            <p className="text-blue-600 font-medium">Jamie is speaking...</p>
+            <p className="text-blue-600 font-medium">{config.journalistName} is speaking...</p>
             <p className="text-xs text-gray-500">Start talking to interrupt</p>
           </div>
         );
@@ -409,7 +421,7 @@ function ConversationContent() {
               }`}
             >
               <div className="text-xs text-gray-500 mb-1">
-                {msg.sender === "journalist" ? "🎙️ Jamie" : "👤 You"}
+                {msg.sender === "journalist" ? `🎙️ ${config.journalistName}` : "👤 You"}
               </div>
               <p className="text-gray-800">{msg.content}</p>
             </div>
