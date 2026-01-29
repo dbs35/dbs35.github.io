@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       userName: user.name,
       greetingText,
-      greetingAudio: audioBase64 ? `data:audio/mp3;base64,${audioBase64}` : undefined,
+      greetingAudio: audioBase64 ? `data:audio/mpeg;base64,${audioBase64}` : undefined,
     });
   } catch (error) {
     console.error("Error starting conversation:", error);

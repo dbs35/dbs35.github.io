@@ -105,7 +105,7 @@ export async function GET(
         userName: conversation.user.name,
         status: conversation.status,
         greetingText,
-        greetingAudio: `data:audio/mp3;base64,${audioBase64}`,
+        greetingAudio: `data:audio/mpeg;base64,${audioBase64}`,
         messages: [
           {
             sender: "journalist",
@@ -138,7 +138,7 @@ export async function GET(
 
       const audioBuffer = await audioResponse.arrayBuffer();
       const audioBase64 = Buffer.from(audioBuffer).toString("base64");
-      greetingAudio = `data:audio/mp3;base64,${audioBase64}`;
+      greetingAudio = `data:audio/mpeg;base64,${audioBase64}`;
     }
 
     return NextResponse.json({

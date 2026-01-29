@@ -344,11 +344,18 @@ function ConversationContent() {
     setState("processing");
 
     try {
-      await fetch("/api/conversation/end", {
+      const response = await fetch("/api/conversation/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.summary) {
+          setSummary(data.summary);
+        }
+      }
 
       setState("ended");
     } catch (err) {
@@ -485,6 +492,16 @@ function ConversationContent() {
         {error && state !== "error" && (
           <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
             {error}
+          </div>
+        )}
+
+        {/* Summary (shown when conversation ends) */}
+        {state === "ended" && summary && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h2 className="text-sm font-medium text-green-800 uppercase tracking-wide mb-2">
+              Conversation Summary
+            </h2>
+            <p className="text-gray-700 whitespace-pre-wrap">{summary}</p>
           </div>
         )}
 
