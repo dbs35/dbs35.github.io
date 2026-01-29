@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@prisma/client": "^5.22.0",
+    "@ricky0123/vad-web": "^0.0.30",
     "dotenv": "^17.2.3",
     "next": "16.1.4",
     "openai": "^6.16.0",
