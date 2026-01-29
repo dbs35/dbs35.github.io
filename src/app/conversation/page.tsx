@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 type ConversationState =
   | "loading"
+  | "ready"
   | "ai_speaking"
   | "listening"
   | "processing"
@@ -40,6 +41,9 @@ function ConversationContent() {
   const vadRef = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null);
   const stateRef = useRef<ConversationState>(state);
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Store greeting data for playback after user tap
+  const greetingDataRef = useRef<{ audio?: string; text?: string } | null>(null);
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -225,7 +229,7 @@ function ConversationContent() {
     [conversationId, playAudio]
   );
 
-  // Initialize VAD and start conversation
+  // Fetch conversation data on mount (but don't start audio yet - wait for user tap)
   useEffect(() => {
     if (!conversationId) {
       router.push("/");
@@ -234,7 +238,7 @@ function ConversationContent() {
 
     let mounted = true;
 
-    const initializeConversation = async () => {
+    const fetchConversationData = async () => {
       try {
         // Fetch config
         fetch("/api/config")
@@ -295,6 +299,8 @@ function ConversationContent() {
         if (response.ok) {
           const data = await response.json();
 
+          if (!mounted) return;
+
           // Load existing messages
           if (data.messages && data.messages.length > 0) {
             setMessages(
@@ -306,38 +312,104 @@ function ConversationContent() {
             );
           }
 
-          // Play greeting audio if this is a new conversation (with Web Speech API fallback)
+          // Store greeting data for playback after user tap
           if (data.greetingAudio || data.greetingText) {
-            setState("ai_speaking");
-            await playAudio(data.greetingAudio, data.greetingText);
+            greetingDataRef.current = {
+              audio: data.greetingAudio,
+              text: data.greetingText,
+            };
           }
+
+          // Ready for user to tap to begin
+          setState("ready");
+        } else {
+          throw new Error("Failed to fetch conversation");
         }
-
-        if (!mounted) return;
-
-        // Start listening
-        setState("listening");
-        vad.start();
       } catch (err) {
-        console.error("Error initializing:", err);
+        console.error("Error fetching conversation:", err);
         if (mounted) {
-          setError(
-            err instanceof Error && err.name === "NotAllowedError"
-              ? "Microphone access is required for voice conversations. Please enable it and refresh."
-              : "Failed to initialize conversation. Please try again."
-          );
+          setError("Failed to load conversation. Please try again.");
           setState("error");
         }
       }
     };
 
-    initializeConversation();
+    fetchConversationData();
 
     return () => {
       mounted = false;
       cleanup();
     };
-  }, [conversationId, router, cleanup, playAudio, sendAudio, stopAudio]);
+  }, [conversationId, router, cleanup]);
+
+  // Handle "Tap to Begin" - initializes VAD and plays greeting (requires user gesture for iOS Safari)
+  const handleBeginConversation = useCallback(async () => {
+    setState("loading");
+
+    try {
+      // Dynamically import VAD to avoid SSR issues
+      const { MicVAD } = await import("@ricky0123/vad-web");
+
+      // Create VAD instance with CDN paths for model and WASM files
+      const vad = await MicVAD.new({
+        baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
+        onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
+        onSpeechStart: () => {
+          console.log("Speech started");
+          setIsSpeaking(true);
+
+          // If AI is speaking, interrupt it
+          if (stateRef.current === "ai_speaking") {
+            stopAudio();
+            setState("interrupted");
+            setTimeout(() => {
+              setState("listening");
+            }, 300);
+          }
+        },
+        onSpeechEnd: (audio: Float32Array) => {
+          console.log("Speech ended, audio length:", audio.length);
+          setIsSpeaking(false);
+
+          // Only process if we're in listening state
+          if (stateRef.current === "listening" || stateRef.current === "interrupted") {
+            // Convert Float32Array to WAV blob
+            const wavBlob = float32ToWav(audio, 16000);
+            sendAudio(wavBlob);
+          }
+        },
+        onVADMisfire: () => {
+          console.log("VAD misfire (too short)");
+          setIsSpeaking(false);
+        },
+        positiveSpeechThreshold: 0.8,
+        negativeSpeechThreshold: 0.5,
+      });
+
+      vadRef.current = vad;
+
+      // Pause VAD initially while we play the greeting
+      vad.pause();
+
+      // Play greeting audio (now triggered by user gesture, so Safari will allow it)
+      if (greetingDataRef.current) {
+        setState("ai_speaking");
+        await playAudio(greetingDataRef.current.audio, greetingDataRef.current.text);
+      }
+
+      // Start listening
+      setState("listening");
+      vad.start();
+    } catch (err) {
+      console.error("Error initializing:", err);
+      setError(
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Microphone access is required for voice conversations. Please enable it and refresh."
+          : "Failed to initialize conversation. Please try again."
+      );
+      setState("error");
+    }
+  }, [playAudio, sendAudio, stopAudio]);
 
   // End conversation handler
   const handleEndConversation = async () => {
@@ -373,6 +445,24 @@ function ConversationContent() {
           <div className="flex flex-col items-center gap-2">
             <div className="animate-spin text-4xl">⏳</div>
             <p className="text-gray-600">Setting up...</p>
+          </div>
+        );
+      case "ready":
+        return (
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-6xl">🎙️</div>
+            <p className="text-gray-700 font-medium text-center">
+              Ready to start your conversation
+            </p>
+            <p className="text-sm text-gray-500 text-center">
+              Tap the button below to enable microphone and audio
+            </p>
+            <button
+              onClick={handleBeginConversation}
+              className="mt-2 px-8 py-4 bg-blue-600 text-white text-lg font-medium rounded-full hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-lg"
+            >
+              Tap to Begin
+            </button>
           </div>
         );
       case "ai_speaking":
