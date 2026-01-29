@@ -33,6 +33,7 @@ function ConversationContent() {
   const [error, setError] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
+  const [summary, setSummary] = useState<string>("");
 
   // Audio refs
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
