@@ -64,11 +64,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Fetch active story assignments
+    const storyAssignments = await prisma.storyAssignment.findMany({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const storyTopics = storyAssignments.map((a) => a.topic);
+
     // Generate a greeting using Claude (with fallback if API fails)
     let greetingText: string;
     try {
       const systemPrompt = getJournalistSystemPrompt(user.name, user.conversationSummary);
-      const greetingPrompt = getGreetingPrompt(user.name, user.conversationSummary);
+      const greetingPrompt = getGreetingPrompt(user.name, user.conversationSummary, storyTopics);
 
       const greetingResponse = await getAnthropic().messages.create({
         model: "claude-sonnet-4-20250514",

@@ -50,15 +50,25 @@ Guidelines:
   return prompt;
 }
 
-export function getGreetingPrompt(userName?: string | null, userSummary?: string | null): string {
+export function getGreetingPrompt(
+  userName?: string | null,
+  userSummary?: string | null,
+  storyTopics?: string[]
+): string {
   const communityName = CONFIG.communityName;
 
+  let storyMention = "";
+  if (storyTopics && storyTopics.length > 0) {
+    const topicList = storyTopics.join(", ");
+    storyMention = ` Also mention that you're currently working on stories about: ${topicList}. Invite them to share if they have any insights on those topics, but make it clear they can talk about whatever's on their mind.`;
+  }
+
   if (userName && userSummary) {
-    return `Generate a brief, warm greeting for ${userName}. Reference something from your past conversations: "${userSummary}". Ask an open-ended follow-up question about something they mentioned before, or ask what's new. Keep it to 1-2 sentences.`;
+    return `Generate a brief, warm greeting for ${userName}. Reference something from your past conversations: "${userSummary}". Ask an open-ended follow-up question about something they mentioned before, or ask what's new.${storyMention} Keep it to 2-3 sentences.`;
   } else if (userName) {
-    return `Generate a brief, warm greeting for ${userName}. Since this is your first conversation, introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's caught your attention?" Keep it to 2-3 sentences.`;
+    return `Generate a brief, warm greeting for ${userName}. Since this is your first conversation, introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's caught your attention?"${storyMention} Keep it to 2-3 sentences.`;
   } else {
-    return `Generate a brief, warm greeting for a new community member. Introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's interesting?" Keep it to 2-3 sentences.`;
+    return `Generate a brief, warm greeting for a new community member. Introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's interesting?"${storyMention} Keep it to 2-3 sentences.`;
   }
 }
 
