@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
     // 4. Delete all generated newsletters
     const deletedNewsletters = await prisma.generatedNewsletter.deleteMany({});
 
+    // 5. Delete editorial context (published topics memory)
+    await prisma.editorialContext.deleteMany({});
+
+    // 6. Delete story backlog (unpublished leads)
+    await prisma.storyBacklog.deleteMany({});
+
     return NextResponse.json({
       success: true,
       deleted: {

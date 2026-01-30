@@ -44,6 +44,8 @@ export default function AdminPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
@@ -141,6 +143,33 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const publishNewsletter = async () => {
+    setIsPublishing(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/admin/newsletter/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to publish newsletter");
+      }
+
+      // Clear newsletter content and refresh conversations
+      setNewsletterContent("");
+      setShowPublishConfirm(false);
+      fetchConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -383,12 +412,18 @@ export default function AdminPage() {
                     {newsletterContent}
                   </pre>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => navigator.clipboard.writeText(newsletterContent)}
                     className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50"
                   >
                     Copy to Clipboard
+                  </button>
+                  <button
+                    onClick={() => setShowPublishConfirm(true)}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+                  >
+                    Newsletter Published
                   </button>
                   <button
                     onClick={() => setNewsletterContent("")}
@@ -436,6 +471,42 @@ export default function AdminPage() {
                 className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isResetting ? "Resetting..." : "Yes, Reset Everything"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Newsletter Published Confirmation Modal */}
+      {showPublishConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Mark Newsletter as Published
+            </h3>
+            <p className="text-gray-600 mb-4">
+              This will archive the source conversations and extract any unpublished story leads for future newsletters. The AI will remember what was published and avoid repeating it.
+            </p>
+            <p className="text-gray-600 mb-6">
+              <strong>What happens:</strong>
+              <br />• Published topics are saved to editorial memory
+              <br />• Unpublished leads are saved to the story backlog
+              <br />• Source conversations are marked as published
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPublishConfirm(false)}
+                disabled={isPublishing}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={publishNewsletter}
+                disabled={isPublishing}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPublishing ? "Processing..." : "Yes, Mark as Published"}
               </button>
             </div>
           </div>
