@@ -42,6 +42,10 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [newsletterContent, setNewsletterContent] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
@@ -111,6 +115,61 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const resetContext = async () => {
+    setIsResetting(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/admin/reset-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to reset context");
+      }
+
+      // Clear local state
+      setConversations([]);
+      setSelectedConversation(null);
+      setNewsletterContent("");
+      setShowResetConfirm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const publishNewsletter = async () => {
+    setIsPublishing(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/admin/newsletter/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to publish newsletter");
+      }
+
+      // Clear newsletter content and refresh conversations
+      setNewsletterContent("");
+      setShowPublishConfirm(false);
+      fetchConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -186,6 +245,12 @@ export default function AdminPage() {
           </h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">{email}</span>
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="text-sm text-red-600 hover:text-red-700"
+            >
+              Reset context
+            </button>
             <button
               onClick={() => {
                 setIsAuthenticated(false);
@@ -347,12 +412,18 @@ export default function AdminPage() {
                     {newsletterContent}
                   </pre>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => navigator.clipboard.writeText(newsletterContent)}
                     className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50"
                   >
                     Copy to Clipboard
+                  </button>
+                  <button
+                    onClick={() => setShowPublishConfirm(true)}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+                  >
+                    Newsletter Published
                   </button>
                   <button
                     onClick={() => setNewsletterContent("")}
@@ -372,6 +443,75 @@ export default function AdminPage() {
           </div>
         </div>
       </main>
+
+      {/* Reset Context Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Reset Context
+            </h3>
+            <p className="text-gray-600 mb-4">
+              This will permanently delete all conversations, messages, and generated newsletters. User conversation summaries will also be cleared. This action cannot be undone.
+            </p>
+            <p className="text-red-600 font-medium mb-6">
+              Are you sure you want to continue?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                disabled={isResetting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={resetContext}
+                disabled={isResetting}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isResetting ? "Resetting..." : "Yes, Reset Everything"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Newsletter Published Confirmation Modal */}
+      {showPublishConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Mark Newsletter as Published
+            </h3>
+            <p className="text-gray-600 mb-4">
+              This will archive the source conversations and extract any unpublished story leads for future newsletters. The AI will remember what was published and avoid repeating it.
+            </p>
+            <p className="text-gray-600 mb-6">
+              <strong>What happens:</strong>
+              <br />• Published topics are saved to editorial memory
+              <br />• Unpublished leads are saved to the story backlog
+              <br />• Source conversations are marked as published
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPublishConfirm(false)}
+                disabled={isPublishing}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={publishNewsletter}
+                disabled={isPublishing}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPublishing ? "Processing..." : "Yes, Mark as Published"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

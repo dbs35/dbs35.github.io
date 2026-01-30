@@ -24,12 +24,13 @@ model User {
 }
 
 model Conversation {
-  id        String   @id @default(uuid())
-  userId    String
-  status    String   @default("ACTIVE") // ACTIVE or CLOSED
-  summary   String?  // Generated when conversation ends
-  createdAt DateTime @default(now())
-  endedAt   DateTime?
+  id          String    @id @default(uuid())
+  userId      String
+  status      String    @default("ACTIVE") // ACTIVE or CLOSED
+  summary     String?   // Generated when conversation ends
+  createdAt   DateTime  @default(now())
+  endedAt     DateTime?
+  publishedAt DateTime? // When this conversation was included in a published newsletter
 
   user      User      @relation(fields: [userId], references: [id])
   messages  Message[]
@@ -52,4 +53,17 @@ model GeneratedNewsletter {
   content               String   // The generated newsletter text
   sourceConversationIds String   // JSON array of conversation IDs used
   createdAt             DateTime @default(now())
+  publishedAt           DateTime? // When this newsletter was marked as published
+}
+
+model EditorialContext {
+  id        String   @id @default(uuid())
+  summary   String   // Rolling summary of all published topics (don't repeat these)
+  updatedAt DateTime @updatedAt
+}
+
+model StoryBacklog {
+  id        String   @id @default(uuid())
+  leads     String   // Summary of unpublished story leads to consider
+  updatedAt DateTime @updatedAt
 }

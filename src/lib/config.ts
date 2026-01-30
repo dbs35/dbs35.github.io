@@ -75,13 +75,35 @@ Conversation:
 ${conversationTranscript}`;
 }
 
-export function getNewsletterPrompt(conversationSummaries: string[]): string {
-  return `You are writing a community newsletter based on recent conversations with community members.
+export function getNewsletterPrompt(
+  conversationSummaries: string[],
+  editorialContext?: string | null,
+  storyBacklog?: string | null
+): string {
+  let prompt = `You are writing a community newsletter based on recent conversations with community members.
 
 Here are summaries of recent conversations:
 
 ${conversationSummaries.map((s, i) => `--- Conversation ${i + 1} ---\n${s}`).join('\n\n')}
+`;
 
+  if (storyBacklog) {
+    prompt += `
+--- Story Leads from Previous Conversations ---
+These are interesting topics from past conversations that haven't been covered yet. Consider including them if relevant:
+${storyBacklog}
+`;
+  }
+
+  if (editorialContext) {
+    prompt += `
+--- Previously Published Topics ---
+These topics have already been covered in past newsletters. Do NOT repeat them unless there is genuinely new information or a significant update:
+${editorialContext}
+`;
+  }
+
+  prompt += `
 Write a newsletter with 2-4 articles based on the most interesting topics from these conversations.
 
 Format:
@@ -109,4 +131,43 @@ ARTICLE 2: [Title]
 
 ================================================================================
 `;
+
+  return prompt;
+}
+
+export function getPublishedTopicsPrompt(newsletterContent: string): string {
+  return `Analyze this newsletter and create a concise summary of the main topics that were covered. This summary will be used to avoid repeating the same stories in future newsletters.
+
+Newsletter:
+${newsletterContent}
+
+Create a bullet-point summary of the key topics covered. For each topic, include:
+- What the story was about
+- Key details mentioned
+- Approximate timeframe if relevant
+
+Keep it concise but informative enough that a journalist would know not to repeat these stories.`;
+}
+
+export function getUnpublishedLeadsPrompt(
+  conversationSummaries: string[],
+  newsletterContent: string
+): string {
+  return `Compare the source conversations with the published newsletter and identify any interesting story leads that were NOT included in the newsletter.
+
+Source conversations:
+${conversationSummaries.map((s, i) => `--- Conversation ${i + 1} ---\n${s}`).join('\n\n')}
+
+Published newsletter:
+${newsletterContent}
+
+Identify any interesting topics, tips, or story ideas from the conversations that did NOT make it into the newsletter. These might include:
+- Minor mentions that could become bigger stories
+- Follow-up opportunities
+- Emerging trends or concerns
+- Human interest angles
+
+If there are no significant unpublished leads, respond with "No additional leads identified."
+
+Format as a bullet-point list of potential story leads, each with a brief description of why it might be worth following up.`;
 }

@@ -18,13 +18,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get recent closed conversations with their summaries
+    // Get recent closed conversations that haven't been published yet
     const conversations = await prisma.conversation.findMany({
       where: {
         status: "CLOSED",
         summary: {
           not: null,
         },
+        publishedAt: null, // Only unpublished conversations
       },
       include: {
         user: {
@@ -45,9 +46,19 @@ export async function POST(request: NextRequest) {
       take: 20, // Last 20 conversations
     });
 
-    if (conversations.length === 0) {
+    // Get editorial context (previously published topics)
+    const editorialContext = await prisma.editorialContext.findFirst();
+
+    // Get story backlog (unpublished leads from past conversations)
+    const storyBacklog = await prisma.storyBacklog.findFirst();
+
+    // Check if we have any material to work with
+    const hasConversations = conversations.length > 0;
+    const hasBacklog = storyBacklog?.leads && !storyBacklog.leads.toLowerCase().includes("no additional leads");
+
+    if (!hasConversations && !hasBacklog) {
       return NextResponse.json(
-        { error: "No completed conversations to generate newsletter from" },
+        { error: "No new conversations or story leads to generate newsletter from" },
         { status: 400 }
       );
     }
@@ -65,7 +76,11 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "user",
-          content: getNewsletterPrompt(conversationSummaries),
+          content: getNewsletterPrompt(
+            conversationSummaries,
+            editorialContext?.summary,
+            storyBacklog?.leads
+          ),
         },
       ],
     });
