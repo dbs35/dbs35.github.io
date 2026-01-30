@@ -46,6 +46,9 @@ export default function AdminPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [storyTopics, setStoryTopics] = useState<string[]>([""]);
+  const [isSavingTopics, setIsSavingTopics] = useState(false);
+  const [topicsLoaded, setTopicsLoaded] = useState(false);
 
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
@@ -71,6 +74,60 @@ export default function AdminPage() {
       setIsLoading(false);
     }
   }, [email]);
+
+  const fetchStoryAssignments = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/admin/story-assignments?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        const topics = data.assignments.map((a: { topic: string }) => a.topic);
+        setStoryTopics(topics.length > 0 ? topics : [""]);
+        setTopicsLoaded(true);
+      }
+    } catch (err) {
+      console.error("Failed to fetch story assignments:", err);
+    }
+  }, [email]);
+
+  const saveStoryAssignments = async () => {
+    setIsSavingTopics(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/admin/story-assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, topics: storyTopics }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to save story assignments");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsSavingTopics(false);
+    }
+  };
+
+  const addTopicField = () => {
+    setStoryTopics([...storyTopics, ""]);
+  };
+
+  const removeTopicField = (index: number) => {
+    if (storyTopics.length > 1) {
+      setStoryTopics(storyTopics.filter((_, i) => i !== index));
+    } else {
+      setStoryTopics([""]);
+    }
+  };
+
+  const updateTopic = (index: number, value: string) => {
+    const newTopics = [...storyTopics];
+    newTopics[index] = value;
+    setStoryTopics(newTopics);
+  };
 
   const fetchConversationDetail = async (id: string) => {
     setIsLoading(true);
@@ -172,6 +229,13 @@ export default function AdminPage() {
       setIsPublishing(false);
     }
   };
+
+  // Fetch story assignments when authenticated
+  useEffect(() => {
+    if (isAuthenticated && !topicsLoaded) {
+      fetchStoryAssignments();
+    }
+  }, [isAuthenticated, topicsLoaded, fetchStoryAssignments]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -387,6 +451,53 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Story Assignments */}
+        <div className="mt-6 bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Story Assignments
+            </h2>
+            <button
+              onClick={saveStoryAssignments}
+              disabled={isSavingTopics}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSavingTopics ? "Saving..." : "Save"}
+            </button>
+          </div>
+          <div className="p-4">
+            <p className="text-sm text-gray-600 mb-4">
+              Enter story topics you&apos;re working on. The journalist will mention these when greeting users.
+            </p>
+            <div className="space-y-2">
+              {storyTopics.map((topic, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => updateTopic(index, e.target.value)}
+                    placeholder="Enter a story topic..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
+                  />
+                  <button
+                    onClick={() => removeTopicField(index)}
+                    className="px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                    title="Remove topic"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={addTopicField}
+              className="mt-3 px-3 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
+            >
+              + Add another topic
+            </button>
           </div>
         </div>
 

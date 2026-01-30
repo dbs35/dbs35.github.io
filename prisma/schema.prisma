@@ -67,3 +67,10 @@ model StoryBacklog {
   leads     String   // Summary of unpublished story leads to consider
   updatedAt DateTime @updatedAt
 }
+
+model StoryAssignment {
+  id        String   @id @default(uuid())
+  topic     String   // Story topic the journalist is working on
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
