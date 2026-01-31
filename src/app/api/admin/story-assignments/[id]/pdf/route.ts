@@ -7,7 +7,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 async function parsePdf(buffer: Buffer): Promise<string> {
   const { text } = await extractText(buffer);
-  return text;
+  // text is an array of strings (one per page), join them
+  return Array.isArray(text) ? text.join("\n") : text;
 }
 
 export async function POST(
