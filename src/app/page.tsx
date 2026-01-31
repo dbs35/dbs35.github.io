@@ -114,7 +114,7 @@ export default function Home() {
         </form>
 
         <div className="text-center text-sm text-gray-500">
-          <p>This is a voice conversation. Make sure your microphone is enabled.</p>
+          <p>This will be a voice conversation. When asked, please enable your microphone.</p>
         </div>
       </main>
     </div>
