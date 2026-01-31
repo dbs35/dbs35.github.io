@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
     } catch (aiError) {
       console.error("Greeting generation failed, using fallback:", aiError);
       greetingText = user.name
-        ? `Hi ${user.name}! I'm ${CONFIG.journalistName}, your community journalist. What's been happening at ${CONFIG.communityName} lately?`
-        : `Hi! I'm ${CONFIG.journalistName}, the ${CONFIG.communityName} community journalist. I'd love to hear what's on your mind. What's been happening lately?`;
+        ? `Hi ${user.name}! I'm ${CONFIG.journalistName}, your community storyteller. What's been happening at ${CONFIG.communityName} lately?`
+        : `Hi! I'm ${CONFIG.journalistName}, the ${CONFIG.communityName} community storyteller. I'd love to hear what's on your mind. What's been happening lately?`;
     }
 
     // Save the greeting as a message

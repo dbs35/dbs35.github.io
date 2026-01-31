@@ -13,7 +13,7 @@ export const CONFIG = {
   sampleRate: 16000,
 
   // Journalist persona
-  journalistPersona: `You are a friendly community journalist for a school parent community.
+  journalistPersona: `You are a friendly community storyteller for a school parent community.
 You're curious, warm, and genuinely interested in what's happening in the school community.
 You're eager to find good news but also willing to hear about problems.
 You ask follow-up questions to get the full story. You think that everyone has interesting and important things to say, and encourage them accordingly.
@@ -35,7 +35,7 @@ export function getJournalistSystemPrompt(
   const communityName = CONFIG.communityName;
   const journalistName = CONFIG.journalistName;
 
-  let prompt = `You are ${journalistName}, a friendly community journalist for ${communityName}.
+  let prompt = `You are ${journalistName}, a friendly community storyteller for ${communityName}.
 
 ${CONFIG.journalistPersona}
 
@@ -89,14 +89,14 @@ export function getGreetingPrompt(
   if (userName && userSummary) {
     return `Generate a brief, warm greeting for ${userName}. Reference something from your past conversations: "${userSummary}". Ask an open-ended follow-up question about something they mentioned before, or ask what's new.${storyMention} Keep it to 2-3 sentences.`;
   } else if (userName) {
-    return `Generate a brief, warm greeting for ${userName}. Since this is your first conversation, introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's caught your attention?"${storyMention} Keep it to 2-3 sentences.`;
+    return `Generate a brief, warm greeting for ${userName}. Since this is your first conversation, introduce yourself as a community storyteller for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's caught your attention?"${storyMention} Keep it to 2-3 sentences.`;
   } else {
-    return `Generate a brief, warm greeting for a new community member. Introduce yourself as a community journalist for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's interesting?"${storyMention} Keep it to 2-3 sentences.`;
+    return `Generate a brief, warm greeting for a new community member. Introduce yourself as a community storyteller for ${communityName} and ask an open-ended question like "What's been happening at ${communityName} lately that's interesting?"${storyMention} Keep it to 2-3 sentences.`;
   }
 }
 
 export function getSummaryPrompt(conversationTranscript: string): string {
-  return `Summarize this conversation for your journalist notes. Focus on:
+  return `Summarize this conversation for your storyteller notes. Focus on:
 - Key topics discussed
 - Any interesting quotes or insights
 - Follow-up opportunities
@@ -179,7 +179,7 @@ Create a bullet-point summary of the key topics covered. For each topic, include
 - Key details mentioned
 - Approximate timeframe if relevant
 
-Keep it concise but informative enough that a journalist would know not to repeat these stories.`;
+Keep it concise but informative enough that a storyteller would know not to repeat these stories.`;
 }
 
 export function getUnpublishedLeadsPrompt(

@@ -40,7 +40,7 @@ function ConversationContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
+  const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Storyteller" });
   const [summary, setSummary] = useState<string>("");
   const [streamingText, setStreamingText] = useState<string>("");
 
@@ -447,7 +447,7 @@ function ConversationContent() {
         fetch("/api/config")
           .then((res) => res.json())
           .then((data) => setConfig(data))
-          .catch(() => setConfig({ communityName: "your community", journalistName: "Journalist" }));
+          .catch(() => setConfig({ communityName: "your community", journalistName: "Storyteller" }));
 
         // Dynamically import VAD to avoid SSR issues
         const { MicVAD } = await import("@ricky0123/vad-web");
@@ -772,7 +772,7 @@ function ConversationContent() {
       <header className="p-4 border-b bg-white/80 backdrop-blur">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
-            🎙️ Community Journalist
+            🎙️ Community Storyteller
           </h1>
           {state !== "ended" && state !== "error" && state !== "loading" && (
             <button
