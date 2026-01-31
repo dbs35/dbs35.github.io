@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CONFIG } from "@/lib/config";
-import pdfParse from "pdf-parse";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Dynamic import for pdf-parse to handle CommonJS module
+async function parsePdf(buffer: Buffer): Promise<string> {
+  const pdfParse = (await import("pdf-parse")).default;
+  const data = await pdfParse(buffer);
+  return data.text;
+}
 
 export async function POST(
   request: NextRequest,
@@ -55,8 +61,7 @@ export async function POST(
 
     let extractedText: string;
     try {
-      const pdfData = await pdfParse(buffer);
-      extractedText = pdfData.text;
+      extractedText = await parsePdf(buffer);
     } catch (parseError) {
       console.error("PDF parsing error:", parseError);
       return NextResponse.json(
