@@ -129,9 +129,11 @@ function ConversationContent() {
   // Play a single audio item (either base64 audio or fallback to Web Speech API)
   const playAudioItem = useCallback(
     (item: AudioQueueItem): Promise<void> => {
+      console.log("Playing audio item:", { index: item.index, hasAudio: !!item.audio, useFallback: item.useFallback });
       return new Promise((resolve, reject) => {
         if (item.useFallback || !item.audio) {
           // Use Web Speech API fallback
+          console.log("Using Web Speech API fallback for item:", item.index);
           speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
           return;
         }
@@ -140,17 +142,22 @@ function ConversationContent() {
         currentAudioRef.current = audio;
 
         audio.onended = () => {
+          console.log("Audio ended for item:", item.index);
           currentAudioRef.current = null;
           resolve();
         };
 
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+          console.error("Audio error for item:", item.index, e);
           currentAudioRef.current = null;
           // Fallback to Web Speech API
           speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
         };
 
-        audio.play().catch(() => {
+        audio.play().then(() => {
+          console.log("Audio started playing for item:", item.index);
+        }).catch((err) => {
+          console.error("Audio play failed for item:", item.index, err);
           currentAudioRef.current = null;
           // Fallback to Web Speech API
           speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
@@ -162,8 +169,12 @@ function ConversationContent() {
 
   // Process audio queue - plays items in order
   const processAudioQueue = useCallback(async () => {
-    if (isPlayingRef.current) return;
+    if (isPlayingRef.current) {
+      console.log("processAudioQueue: already playing, returning");
+      return;
+    }
 
+    console.log("processAudioQueue: starting, queue length:", audioQueueRef.current.length);
     isPlayingRef.current = true;
 
     while (audioQueueRef.current.length > 0) {
@@ -173,12 +184,14 @@ function ConversationContent() {
 
       if (itemIndex === -1) {
         // Next item not ready yet, wait a bit
+        console.log("processAudioQueue: waiting for index", nextIndex, "queue:", audioQueueRef.current.map(i => i.index));
         await new Promise(resolve => setTimeout(resolve, 50));
         continue;
       }
 
       const item = audioQueueRef.current.splice(itemIndex, 1)[0];
       nextExpectedIndexRef.current++;
+      console.log("processAudioQueue: playing item", item.index);
 
       try {
         await playAudioItem(item);
@@ -187,6 +200,7 @@ function ConversationContent() {
       }
     }
 
+    console.log("processAudioQueue: finished, queue empty");
     isPlayingRef.current = false;
 
     // Check if we should resume listening (all audio played)
@@ -200,6 +214,7 @@ function ConversationContent() {
 
   // Add item to audio queue
   const enqueueAudio = useCallback((item: AudioQueueItem) => {
+    console.log("enqueueAudio: adding item", item.index, "queue length before:", audioQueueRef.current.length);
     audioQueueRef.current.push(item);
     processAudioQueue();
   }, [processAudioQueue]);
@@ -345,10 +360,11 @@ function ConversationContent() {
                   break;
 
                 case "audio":
-                  // Add to audio queue
+                  // Add to audio queue (include text for fallback)
+                  console.log("Received audio event:", { index: data.index, hasAudio: !!data.audio, textLength: data.text?.length });
                   enqueueAudio({
                     audio: data.audio,
-                    text: "", // Text already sent separately
+                    text: data.text || "",
                     index: data.index,
                   });
                   break;

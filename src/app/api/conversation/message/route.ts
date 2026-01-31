@@ -188,6 +188,7 @@ export async function POST(request: NextRequest) {
 
               await writeEvent("audio", {
                 audio: `data:audio/mpeg;base64,${audioBase64}`,
+                text: sentence,
                 index: sentenceIndex,
               });
             } catch (ttsError) {
@@ -220,6 +221,7 @@ export async function POST(request: NextRequest) {
 
           await writeEvent("audio", {
             audio: `data:audio/mpeg;base64,${audioBase64}`,
+            text: remaining,
             index: sentenceIndex,
           });
         } catch (ttsError) {
