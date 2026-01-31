@@ -831,6 +831,24 @@ function ConversationContent() {
               Starting conversation...
             </p>
           )}
+
+          {/* Stop and listen button */}
+          {state === "ai_speaking" && (
+            <div className="pt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  stopAudio();
+                  setState("listening");
+                  if (vadRef.current) {
+                    vadRef.current.start();
+                  }
+                }}
+                className="px-6 py-3 bg-red-500 text-white font-medium rounded-full hover:bg-red-600 active:bg-red-700 transition-colors shadow-md flex items-center gap-2"
+              >
+                <span>Stop & Listen</span>
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </div>
