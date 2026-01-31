@@ -24,6 +24,13 @@ interface Config {
   journalistName: string;
 }
 
+interface AudioQueueItem {
+  audio?: string;
+  text: string;
+  index: number;
+  useFallback?: boolean;
+}
+
 function ConversationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -35,12 +42,18 @@ function ConversationContent() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [config, setConfig] = useState<Config>({ communityName: "", journalistName: "Journalist" });
   const [summary, setSummary] = useState<string>("");
+  const [streamingText, setStreamingText] = useState<string>("");
 
   // Audio refs
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const vadRef = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null);
   const stateRef = useRef<ConversationState>(state);
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Audio queue for streaming playback
+  const audioQueueRef = useRef<AudioQueueItem[]>([]);
+  const isPlayingRef = useRef<boolean>(false);
+  const nextExpectedIndexRef = useRef<number>(0);
 
   // Store greeting data for playback after user tap
   const greetingDataRef = useRef<{ audio?: string; text?: string } | null>(null);
@@ -65,6 +78,9 @@ function ConversationContent() {
       window.speechSynthesis.cancel();
     }
     speechSynthRef.current = null;
+    // Clear audio queue
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
   }, []);
 
   // Web Speech API fallback for TTS (free, offline)
@@ -109,6 +125,99 @@ function ConversationContent() {
     },
     []
   );
+
+  // Play a single audio item (either base64 audio or fallback to Web Speech API)
+  const playAudioItem = useCallback(
+    (item: AudioQueueItem): Promise<void> => {
+      console.log("Playing audio item:", { index: item.index, hasAudio: !!item.audio, useFallback: item.useFallback });
+      return new Promise((resolve, reject) => {
+        if (item.useFallback || !item.audio) {
+          // Use Web Speech API fallback
+          console.log("Using Web Speech API fallback for item:", item.index);
+          speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
+          return;
+        }
+
+        const audio = new Audio(item.audio);
+        currentAudioRef.current = audio;
+
+        audio.onended = () => {
+          console.log("Audio ended for item:", item.index);
+          currentAudioRef.current = null;
+          resolve();
+        };
+
+        audio.onerror = (e) => {
+          console.error("Audio error for item:", item.index, e);
+          currentAudioRef.current = null;
+          // Fallback to Web Speech API
+          speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
+        };
+
+        audio.play().then(() => {
+          console.log("Audio started playing for item:", item.index);
+        }).catch((err) => {
+          console.error("Audio play failed for item:", item.index, err);
+          currentAudioRef.current = null;
+          // Fallback to Web Speech API
+          speakWithWebSpeechAPI(item.text).then(resolve).catch(reject);
+        });
+      });
+    },
+    [speakWithWebSpeechAPI]
+  );
+
+  // Process audio queue - plays items in order
+  const processAudioQueue = useCallback(async () => {
+    if (isPlayingRef.current) {
+      console.log("processAudioQueue: already playing, returning");
+      return;
+    }
+
+    console.log("processAudioQueue: starting, queue length:", audioQueueRef.current.length);
+    isPlayingRef.current = true;
+
+    while (audioQueueRef.current.length > 0) {
+      // Find the next item to play (in order)
+      const nextIndex = nextExpectedIndexRef.current;
+      const itemIndex = audioQueueRef.current.findIndex(item => item.index === nextIndex);
+
+      if (itemIndex === -1) {
+        // Next item not ready yet, wait a bit
+        console.log("processAudioQueue: waiting for index", nextIndex, "queue:", audioQueueRef.current.map(i => i.index));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        continue;
+      }
+
+      const item = audioQueueRef.current.splice(itemIndex, 1)[0];
+      nextExpectedIndexRef.current++;
+      console.log("processAudioQueue: playing item", item.index);
+
+      try {
+        await playAudioItem(item);
+      } catch (err) {
+        console.error("Error playing audio item:", err);
+      }
+    }
+
+    console.log("processAudioQueue: finished, queue empty");
+    isPlayingRef.current = false;
+
+    // Check if we should resume listening (all audio played)
+    if (stateRef.current === "ai_speaking" && audioQueueRef.current.length === 0) {
+      setState("listening");
+      if (vadRef.current) {
+        vadRef.current.start();
+      }
+    }
+  }, [playAudioItem]);
+
+  // Add item to audio queue
+  const enqueueAudio = useCallback((item: AudioQueueItem) => {
+    console.log("enqueueAudio: adding item", item.index, "queue length before:", audioQueueRef.current.length);
+    audioQueueRef.current.push(item);
+    processAudioQueue();
+  }, [processAudioQueue]);
 
   // Play audio with OpenAI TTS, fall back to Web Speech API if unavailable
   const playAudio = useCallback(
@@ -171,46 +280,139 @@ function ConversationContent() {
       window.speechSynthesis.cancel();
       speechSynthRef.current = null;
     }
+    // Clear the audio queue
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
   }, []);
 
-  // Send audio to backend
+  // Send audio to backend with streaming response handling
   const sendAudio = useCallback(
     async (audioBlob: Blob) => {
       if (!conversationId) return;
 
+      console.log("sendAudio: starting, blob size:", audioBlob.size);
       setState("processing");
+      setStreamingText("");
+      nextExpectedIndexRef.current = 0;
+      audioQueueRef.current = [];
 
       try {
         const formData = new FormData();
         formData.append("conversationId", conversationId);
         formData.append("audio", audioBlob);
 
+        console.log("sendAudio: sending fetch request");
         const response = await fetch("/api/conversation/message", {
           method: "POST",
           body: formData,
         });
 
+        console.log("sendAudio: response received, ok:", response.ok, "status:", response.status);
         if (!response.ok) {
           throw new Error("Failed to process audio");
         }
 
-        const data = await response.json();
+        // Handle SSE streaming response
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body");
+        }
 
-        // Add messages to transcript
-        setMessages((prev) => [
-          ...prev,
-          { sender: "user", content: data.userTranscript, timestamp: new Date() },
-          { sender: "journalist", content: data.journalistText, timestamp: new Date() },
-        ]);
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let userTranscript = "";
+        let journalistText = "";
+        let currentEvent = ""; // Persist across chunks for multi-chunk data
 
-        // Pause VAD while AI is speaking
+        // Pause VAD while processing/speaking
         if (vadRef.current) {
           vadRef.current.pause();
         }
 
-        // Play response (with Web Speech API fallback)
-        setState("ai_speaking");
-        await playAudio(data.journalistAudio, data.journalistText);
+        console.log("sendAudio: starting to read stream");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log("sendAudio: stream done");
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          console.log("sendAudio: received chunk:", chunk.substring(0, 100) + (chunk.length > 100 ? "..." : ""));
+          buffer += chunk;
+
+          // Parse SSE events from buffer
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7);
+              console.log("sendAudio: parsed event type:", currentEvent);
+            } else if (line.startsWith("data: ") && currentEvent) {
+              const data = JSON.parse(line.slice(6));
+              console.log("sendAudio: parsed data for event:", currentEvent);
+
+              switch (currentEvent) {
+                case "transcript":
+                  userTranscript = data.text;
+                  // Add user message immediately
+                  setMessages((prev) => [
+                    ...prev,
+                    { sender: "user", content: data.text, timestamp: new Date() },
+                  ]);
+                  setState("ai_speaking");
+                  break;
+
+                case "text":
+                  // Update streaming text display
+                  setStreamingText((prev) => prev + (prev ? " " : "") + data.text);
+                  journalistText += (journalistText ? " " : "") + data.text;
+                  break;
+
+                case "audio":
+                  // Add to audio queue (include text for fallback)
+                  console.log("Received audio event:", { index: data.index, hasAudio: !!data.audio, textLength: data.text?.length });
+                  enqueueAudio({
+                    audio: data.audio,
+                    text: data.text || "",
+                    index: data.index,
+                  });
+                  break;
+
+                case "tts_error":
+                  // TTS failed, use Web Speech API fallback
+                  enqueueAudio({
+                    text: data.text,
+                    index: data.index,
+                    useFallback: true,
+                  });
+                  break;
+
+                case "complete":
+                  // Add complete journalist message to transcript
+                  setMessages((prev) => [
+                    ...prev,
+                    { sender: "journalist", content: data.fullText, timestamp: new Date() },
+                  ]);
+                  setStreamingText("");
+                  break;
+
+                case "error":
+                  throw new Error(data.error);
+              }
+
+              currentEvent = "";
+            }
+          }
+        }
+
+        // Wait for audio queue to finish if still playing
+        const waitForAudio = async () => {
+          while (isPlayingRef.current || audioQueueRef.current.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        };
+        await waitForAudio();
 
         // Resume VAD for listening
         setState("listening");
@@ -220,13 +422,14 @@ function ConversationContent() {
       } catch (err) {
         console.error("Error sending audio:", err);
         setError("Failed to process your response. Please try again.");
+        setStreamingText("");
         setState("listening");
         if (vadRef.current) {
           vadRef.current.start();
         }
       }
     },
-    [conversationId, playAudio]
+    [conversationId, enqueueAudio]
   );
 
   // Fetch conversation data on mount (but don't start audio yet - wait for user tap)
@@ -624,10 +827,37 @@ function ConversationContent() {
               <p className="text-gray-800">{msg.content}</p>
             </div>
           ))}
+          {/* Streaming text display */}
+          {streamingText && (
+            <div className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-400 opacity-70">
+              <div className="text-xs text-gray-500 mb-1">
+                🎙️ {config.journalistName}
+              </div>
+              <p className="text-gray-800">{streamingText}<span className="animate-pulse">...</span></p>
+            </div>
+          )}
           {messages.length === 0 && state === "loading" && (
             <p className="text-gray-400 text-center italic">
               Starting conversation...
             </p>
+          )}
+
+          {/* Stop and listen button */}
+          {state === "ai_speaking" && (
+            <div className="pt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  stopAudio();
+                  setState("listening");
+                  if (vadRef.current) {
+                    vadRef.current.start();
+                  }
+                }}
+                className="px-6 py-3 bg-red-500 text-white font-medium rounded-full hover:bg-red-600 active:bg-red-700 transition-colors shadow-md flex items-center gap-2"
+              >
+                <span>Stop & Listen</span>
+              </button>
+            </div>
           )}
         </div>
       </main>
