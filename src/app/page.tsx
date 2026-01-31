@@ -10,6 +10,7 @@ interface Config {
 
 export default function Home() {
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [config, setConfig] = useState<Config | null>(null);
@@ -31,7 +32,7 @@ export default function Home() {
       const response = await fetch("/api/conversation/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, firstName }),
       });
 
       if (!response.ok) {
@@ -71,8 +72,22 @@ export default function Home() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
+              First name
+            </label>
+            <input
+              type="text"
+              id="firstName"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Your first name"
+              required
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-900"
+            />
+          </div>
+          <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Enter your email to start
+              Email
             </label>
             <input
               type="email"
@@ -97,7 +112,7 @@ export default function Home() {
 
           <button
             type="submit"
-            disabled={isLoading || !email}
+            disabled={isLoading || !email || !firstName}
             className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
           >
             {isLoading ? (

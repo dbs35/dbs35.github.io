@@ -17,11 +17,18 @@ function getAnthropic(): Anthropic {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
+    const { email, firstName } = await request.json();
 
     if (!email || typeof email !== "string") {
       return NextResponse.json(
         { error: "Email is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!firstName || typeof firstName !== "string") {
+      return NextResponse.json(
+        { error: "First name is required" },
         { status: 400 }
       );
     }
@@ -35,13 +42,17 @@ export async function POST(request: NextRequest) {
       user = await prisma.user.create({
         data: {
           email: email.toLowerCase(),
+          name: firstName.trim(),
         },
       });
     } else {
-      // Update last seen
+      // Update last seen and name (in case they changed it)
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { lastSeenAt: new Date() },
+        data: {
+          lastSeenAt: new Date(),
+          name: firstName.trim(),
+        },
       });
     }
 
