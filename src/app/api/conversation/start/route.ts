@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         voice: "nova",
         input: greetingText,
         response_format: "mp3",
-        speed: 1.3,
+        speed: 1.25,
       });
 
       // Get the audio as base64
