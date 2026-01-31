@@ -84,6 +84,7 @@ export async function GET(
         voice: "nova",
         input: greetingText,
         response_format: "mp3",
+        speed: 1.75,
       });
 
       const audioBuffer = await audioResponse.arrayBuffer();
@@ -134,6 +135,7 @@ export async function GET(
         voice: "nova",
         input: greetingText,
         response_format: "mp3",
+        speed: 1.75,
       });
 
       const audioBuffer = await audioResponse.arrayBuffer();
