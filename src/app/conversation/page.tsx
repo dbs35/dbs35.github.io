@@ -290,6 +290,7 @@ function ConversationContent() {
     async (audioBlob: Blob) => {
       if (!conversationId) return;
 
+      console.log("sendAudio: starting, blob size:", audioBlob.size);
       setState("processing");
       setStreamingText("");
       nextExpectedIndexRef.current = 0;
@@ -300,11 +301,13 @@ function ConversationContent() {
         formData.append("conversationId", conversationId);
         formData.append("audio", audioBlob);
 
+        console.log("sendAudio: sending fetch request");
         const response = await fetch("/api/conversation/message", {
           method: "POST",
           body: formData,
         });
 
+        console.log("sendAudio: response received, ok:", response.ok, "status:", response.status);
         if (!response.ok) {
           throw new Error("Failed to process audio");
         }
@@ -325,11 +328,17 @@ function ConversationContent() {
           vadRef.current.pause();
         }
 
+        console.log("sendAudio: starting to read stream");
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log("sendAudio: stream done");
+            break;
+          }
 
-          buffer += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          console.log("sendAudio: received chunk:", chunk.substring(0, 100) + (chunk.length > 100 ? "..." : ""));
+          buffer += chunk;
 
           // Parse SSE events from buffer
           const lines = buffer.split("\n");
@@ -339,8 +348,10 @@ function ConversationContent() {
           for (const line of lines) {
             if (line.startsWith("event: ")) {
               currentEvent = line.slice(7);
+              console.log("sendAudio: parsed event type:", currentEvent);
             } else if (line.startsWith("data: ") && currentEvent) {
               const data = JSON.parse(line.slice(6));
+              console.log("sendAudio: parsed data for event:", currentEvent);
 
               switch (currentEvent) {
                 case "transcript":
