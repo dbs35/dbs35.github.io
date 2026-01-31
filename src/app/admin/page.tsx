@@ -33,6 +33,12 @@ interface ConversationDetail {
   messages: Message[];
 }
 
+interface StoryAssignment {
+  id?: string;
+  topic: string;
+  pdfFileName?: string | null;
+}
+
 export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,9 +52,10 @@ export default function AdminPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [storyTopics, setStoryTopics] = useState<string[]>([""]);
+  const [storyAssignments, setStoryAssignments] = useState<StoryAssignment[]>([{ topic: "" }]);
   const [isSavingTopics, setIsSavingTopics] = useState(false);
   const [topicsLoaded, setTopicsLoaded] = useState(false);
+  const [uploadingPdfId, setUploadingPdfId] = useState<string | null>(null);
 
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
@@ -80,8 +87,12 @@ export default function AdminPage() {
       const response = await fetch(`/api/admin/story-assignments?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
-        const topics = data.assignments.map((a: { topic: string }) => a.topic);
-        setStoryTopics(topics.length > 0 ? topics : [""]);
+        const assignments = data.assignments.map((a: { id: string; topic: string; pdfFileName?: string | null }) => ({
+          id: a.id,
+          topic: a.topic,
+          pdfFileName: a.pdfFileName,
+        }));
+        setStoryAssignments(assignments.length > 0 ? assignments : [{ topic: "" }]);
         setTopicsLoaded(true);
       }
     } catch (err) {
@@ -97,13 +108,22 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/story-assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, topics: storyTopics }),
+        body: JSON.stringify({ email, assignments: storyAssignments }),
       });
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to save story assignments");
       }
+
+      // Update local state with returned assignments (includes new IDs)
+      const data = await response.json();
+      const assignments = data.assignments.map((a: { id: string; topic: string; pdfFileName?: string | null }) => ({
+        id: a.id,
+        topic: a.topic,
+        pdfFileName: a.pdfFileName,
+      }));
+      setStoryAssignments(assignments.length > 0 ? assignments : [{ topic: "" }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -112,21 +132,80 @@ export default function AdminPage() {
   };
 
   const addTopicField = () => {
-    setStoryTopics([...storyTopics, ""]);
+    setStoryAssignments([...storyAssignments, { topic: "" }]);
   };
 
   const removeTopicField = (index: number) => {
-    if (storyTopics.length > 1) {
-      setStoryTopics(storyTopics.filter((_, i) => i !== index));
+    if (storyAssignments.length > 1) {
+      setStoryAssignments(storyAssignments.filter((_, i) => i !== index));
     } else {
-      setStoryTopics([""]);
+      setStoryAssignments([{ topic: "" }]);
     }
   };
 
   const updateTopic = (index: number, value: string) => {
-    const newTopics = [...storyTopics];
-    newTopics[index] = value;
-    setStoryTopics(newTopics);
+    const newAssignments = [...storyAssignments];
+    newAssignments[index] = { ...newAssignments[index], topic: value };
+    setStoryAssignments(newAssignments);
+  };
+
+  const handlePdfUpload = async (assignmentId: string, file: File) => {
+    setUploadingPdfId(assignmentId);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("email", email);
+      formData.append("pdf", file);
+
+      const response = await fetch(`/api/admin/story-assignments/${assignmentId}/pdf`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to upload PDF");
+      }
+
+      const data = await response.json();
+
+      // Update local state with the new filename
+      setStoryAssignments((prev) =>
+        prev.map((a) =>
+          a.id === assignmentId ? { ...a, pdfFileName: data.pdfFileName } : a
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setUploadingPdfId(null);
+    }
+  };
+
+  const handlePdfDelete = async (assignmentId: string) => {
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/story-assignments/${assignmentId}/pdf?email=${encodeURIComponent(email)}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete PDF");
+      }
+
+      // Update local state
+      setStoryAssignments((prev) =>
+        prev.map((a) =>
+          a.id === assignmentId ? { ...a, pdfFileName: null } : a
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
   };
 
   const fetchConversationDetail = async (id: string) => {
@@ -471,24 +550,70 @@ export default function AdminPage() {
           <div className="p-4">
             <p className="text-sm text-gray-600 mb-4">
               Enter story topics you&apos;re working on. The journalist will mention these when greeting users.
+              You can upload a PDF for each topic to provide background information.
             </p>
-            <div className="space-y-2">
-              {storyTopics.map((topic, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={topic}
-                    onChange={(e) => updateTopic(index, e.target.value)}
-                    placeholder="Enter a story topic..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
-                  />
-                  <button
-                    onClick={() => removeTopicField(index)}
-                    className="px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                    title="Remove topic"
-                  >
-                    &times;
-                  </button>
+            <div className="space-y-3">
+              {storyAssignments.map((assignment, index) => (
+                <div key={assignment.id || index} className="border border-gray-200 rounded-lg p-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={assignment.topic}
+                      onChange={(e) => updateTopic(index, e.target.value)}
+                      placeholder="Enter a story topic..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
+                    />
+                    <button
+                      onClick={() => removeTopicField(index)}
+                      className="px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Remove topic"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  {/* PDF upload section - only show for saved assignments */}
+                  {assignment.id && (
+                    <div className="mt-2 flex items-center gap-2 text-sm">
+                      {assignment.pdfFileName ? (
+                        <>
+                          <span className="text-gray-600">
+                            PDF: <span className="font-medium">{assignment.pdfFileName}</span>
+                          </span>
+                          <button
+                            onClick={() => handlePdfDelete(assignment.id!)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <label className="cursor-pointer text-blue-600 hover:text-blue-700">
+                            {uploadingPdfId === assignment.id ? "Uploading..." : "Upload PDF"}
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              className="hidden"
+                              disabled={uploadingPdfId === assignment.id}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handlePdfUpload(assignment.id!, file);
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                          </label>
+                          <span className="text-gray-400">(optional background info)</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {!assignment.id && (
+                    <div className="mt-2 text-sm text-gray-400">
+                      Save to enable PDF upload
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -69,8 +69,10 @@ model StoryBacklog {
 }
 
 model StoryAssignment {
-  id        String   @id @default(uuid())
-  topic     String   // Story topic the journalist is working on
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid())
+  topic          String   // Story topic the journalist is working on
+  backgroundInfo String?  // Extracted text from uploaded PDF
+  pdfFileName    String?  // Original filename of uploaded PDF
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
 }

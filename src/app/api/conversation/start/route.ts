@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { CONFIG, getGreetingPrompt, getJournalistSystemPrompt } from "@/lib/config";
+import { CONFIG, getGreetingPrompt, getJournalistSystemPrompt, StoryAssignmentWithBackground } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
@@ -64,17 +64,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Fetch active story assignments
+    // Fetch active story assignments with background info
     const storyAssignments = await prisma.storyAssignment.findMany({
       where: { active: true },
       orderBy: { createdAt: "asc" },
     });
+
+    // Prepare data for prompts
     const storyTopics = storyAssignments.map((a) => a.topic);
+    const assignmentsWithBackground: StoryAssignmentWithBackground[] = storyAssignments.map((a) => ({
+      topic: a.topic,
+      backgroundInfo: a.backgroundInfo,
+    }));
 
     // Generate a greeting using Claude (with fallback if API fails)
     let greetingText: string;
     try {
-      const systemPrompt = getJournalistSystemPrompt(user.name, user.conversationSummary);
+      const systemPrompt = getJournalistSystemPrompt(user.name, user.conversationSummary, assignmentsWithBackground);
       const greetingPrompt = getGreetingPrompt(user.name, user.conversationSummary, storyTopics);
 
       const greetingResponse = await getAnthropic().messages.create({
