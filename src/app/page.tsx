@@ -107,7 +107,7 @@ export default function Home() {
               </>
             ) : (
               <>
-                🎤 Start Conversation
+                🎤 Let's do an interview!
               </>
             )}
           </button>
