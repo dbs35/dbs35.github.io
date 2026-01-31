@@ -142,7 +142,7 @@ Write a newsletter with 2-4 articles based on the most interesting topics from t
 Format:
 - Use plain text with simple formatting
 - Each article should be 100-400 words
-- Include quotes from sources (use "a parent mentioned..." or "according to a teacher..." for attribution)
+- Include quotes from sources, using first names for attribution (e.g., "Sarah mentioned...", "According to Mike...")
 - Focus on what's interesting or important to the community
 - Be warm and engaging
 
