@@ -751,14 +751,25 @@ function ConversationContent() {
           <div
             key={i}
             className={`w-2 rounded-full transition-all duration-150 ${
-              isSpeaking ? "bg-green-500" : "bg-gray-300"
+              isSpeaking ? "bg-green-500 animate-sound-bar" : "bg-gray-300"
             }`}
             style={{
-              height: isSpeaking ? `${20 + Math.random() * 30}px` : "8px",
-              animationDelay: `${i * 0.1}s`,
+              height: isSpeaking ? undefined : "8px",
+              animationDelay: isSpeaking ? `${i * 0.1}s` : undefined,
             }}
           />
         ))}
+        <style jsx>{`
+          @keyframes sound-bar {
+            0%, 100% { height: 20px; }
+            25% { height: 45px; }
+            50% { height: 30px; }
+            75% { height: 50px; }
+          }
+          .animate-sound-bar {
+            animation: sound-bar 0.5s ease-in-out infinite;
+          }
+        `}</style>
       </div>
     );
   };
