@@ -62,10 +62,10 @@ export default function Home() {
         <div className="text-center">
           <div className="text-6xl mb-4">🎙️</div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Community Journalist
+            Community Storyteller
           </h1>
           <p className="text-gray-600 mb-6">
-            Hi! I&apos;m {config.journalistName}, the {config.communityName} community journalist. I&apos;d love to hear
+            Hi! I&apos;m {config.journalistName}, the {config.communityName} community storyteller. I&apos;d love to hear
             what&apos;s happening. Share your stories, ideas, or just tell me what&apos;s on your mind.
           </p>
         </div>

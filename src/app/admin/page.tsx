@@ -505,7 +505,7 @@ export default function AdminPage() {
                       }`}
                     >
                       <div className="text-xs text-gray-500 mb-1">
-                        {msg.senderType === "JOURNALIST" ? "Journalist" : "User"} -{" "}
+                        {msg.senderType === "JOURNALIST" ? "Storyteller" : "User"} -{" "}
                         {formatDate(msg.createdAt)}
                       </div>
                       <p className="text-gray-800 text-sm">{msg.content}</p>
@@ -549,7 +549,7 @@ export default function AdminPage() {
           </div>
           <div className="p-4">
             <p className="text-sm text-gray-600 mb-4">
-              Enter story topics you&apos;re working on. The journalist will mention these when greeting users.
+              Enter story topics you&apos;re working on. The storyteller will mention these when greeting users.
               You can upload a PDF for each topic to provide background information.
             </p>
             <div className="space-y-3">

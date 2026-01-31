@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     // Build transcript for summary
     const transcript = conversation.messages
       .map((msg) => {
-        const speaker = msg.senderType === "USER" ? "Community Member" : "Journalist";
+        const speaker = msg.senderType === "USER" ? "Community Member" : "Storyteller";
         return `${speaker}: ${msg.content}`;
       })
       .join("\n\n");
