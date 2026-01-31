@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CONFIG, getGreetingPrompt, getJournalistSystemPrompt, StoryAssignmentWithBackground } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 
-// Lazy-load clients to avoid errors if API keys are not set
+// Lazy-load client to avoid errors if API key is not set
 let anthropic: Anthropic | null = null;
-let openai: OpenAI | null = null;
 
 function getAnthropic(): Anthropic {
   if (!anthropic) {
@@ -15,15 +13,6 @@ function getAnthropic(): Anthropic {
     });
   }
   return anthropic;
-}
-
-function getOpenAI(): OpenAI {
-  if (!openai) {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-  return openai;
 }
 
 export async function POST(request: NextRequest) {
@@ -106,25 +95,6 @@ export async function POST(request: NextRequest) {
         : `Hi! I'm ${CONFIG.journalistName}, the ${CONFIG.communityName} community journalist. I'd love to hear what's on your mind. What's been happening lately?`;
     }
 
-    // Generate audio for the greeting using OpenAI TTS (optional - conversation page will regenerate if needed)
-    let audioBase64: string | undefined;
-    try {
-      const audioResponse = await getOpenAI().audio.speech.create({
-        model: "tts-1",
-        voice: "nova",
-        input: greetingText,
-        response_format: "mp3",
-        speed: 1.25,
-      });
-
-      // Get the audio as base64
-      const audioBuffer = await audioResponse.arrayBuffer();
-      audioBase64 = Buffer.from(audioBuffer).toString("base64");
-    } catch (ttsError) {
-      console.error("TTS generation failed (conversation will still work):", ttsError);
-      // Continue without audio - the conversation page will generate it
-    }
-
     // Save the greeting as a message
     await prisma.message.create({
       data: {
@@ -140,7 +110,6 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       userName: user.name,
       greetingText,
-      greetingAudio: audioBase64 ? `data:audio/mpeg;base64,${audioBase64}` : undefined,
     });
   } catch (error) {
     console.error("Error starting conversation:", error);
