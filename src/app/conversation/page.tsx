@@ -647,7 +647,7 @@ function ConversationContent() {
         return (
           <div className="flex flex-col items-center gap-2">
             <div className="animate-spin text-4xl">⏳</div>
-            <p className="text-gray-600">Setting up...</p>
+            <p className="text-gray-600">Gathering my interview notes (takes ~15-20 seconds)...</p>
           </div>
         );
       case "ready":
