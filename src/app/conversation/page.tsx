@@ -322,6 +322,7 @@ function ConversationContent() {
         let buffer = "";
         let userTranscript = "";
         let journalistText = "";
+        let currentEvent = ""; // Persist across chunks for multi-chunk data
 
         // Pause VAD while processing/speaking
         if (vadRef.current) {
@@ -343,8 +344,6 @@ function ConversationContent() {
           // Parse SSE events from buffer
           const lines = buffer.split("\n");
           buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-          let currentEvent = "";
           for (const line of lines) {
             if (line.startsWith("event: ")) {
               currentEvent = line.slice(7);
