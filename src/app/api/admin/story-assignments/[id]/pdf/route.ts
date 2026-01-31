@@ -5,8 +5,8 @@ import { extractText } from "unpdf";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-async function parsePdf(buffer: Buffer): Promise<string> {
-  const { text } = await extractText(buffer);
+async function parsePdf(data: Uint8Array): Promise<string> {
+  const { text } = await extractText(data);
   // text is an array of strings (one per page), join them
   return Array.isArray(text) ? text.join("\n") : text;
 }
@@ -55,13 +55,13 @@ export async function POST(
       );
     }
 
-    // Read file as buffer and extract text
+    // Read file as Uint8Array and extract text
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const data = new Uint8Array(arrayBuffer);
 
     let extractedText: string;
     try {
-      extractedText = await parsePdf(buffer);
+      extractedText = await parsePdf(data);
     } catch (parseError) {
       console.error("PDF parsing error:", parseError);
       return NextResponse.json(
