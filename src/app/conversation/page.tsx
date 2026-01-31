@@ -673,7 +673,7 @@ function ConversationContent() {
           <div className="flex flex-col items-center gap-2">
             <div className="text-4xl animate-pulse">🔊</div>
             <p className="text-blue-600 font-medium">{config.journalistName} is speaking...</p>
-            <p className="text-xs text-gray-500">Start talking to interrupt</p>
+            <p className="text-xs text-gray-500">To interrupt, click button below</p>
           </div>
         );
       case "listening":
