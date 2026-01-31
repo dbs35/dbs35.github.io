@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       voice: "nova",
       input: journalistText,
       response_format: "mp3",
-      speed: 1.75,
+      speed: 1.3,
     });
 
     const responseAudioBuffer = await audioResponse.arrayBuffer();
