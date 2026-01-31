@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { getJournalistSystemPrompt } from "@/lib/config";
+import { getJournalistSystemPrompt, StoryAssignmentWithBackground } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
@@ -114,10 +114,21 @@ export async function POST(request: NextRequest) {
       content: userText,
     });
 
+    // Fetch active story assignments with background info
+    const storyAssignments = await prisma.storyAssignment.findMany({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const assignmentsWithBackground: StoryAssignmentWithBackground[] = storyAssignments.map((a) => ({
+      topic: a.topic,
+      backgroundInfo: a.backgroundInfo,
+    }));
+
     // Get response from Claude
     const systemPrompt = getJournalistSystemPrompt(
       conversation.user.name,
-      conversation.user.conversationSummary
+      conversation.user.conversationSummary,
+      assignmentsWithBackground
     );
 
     const claudeResponse = await getAnthropic().messages.create({

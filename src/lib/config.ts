@@ -22,7 +22,16 @@ If someone mentions something interesting, dig deeper.
 Remember details from past conversations to build rapport.`,
 };
 
-export function getJournalistSystemPrompt(userName?: string | null, userSummary?: string | null): string {
+export interface StoryAssignmentWithBackground {
+  topic: string;
+  backgroundInfo?: string | null;
+}
+
+export function getJournalistSystemPrompt(
+  userName?: string | null,
+  userSummary?: string | null,
+  storyAssignments?: StoryAssignmentWithBackground[]
+): string {
   const communityName = CONFIG.communityName;
   const journalistName = CONFIG.journalistName;
 
@@ -45,6 +54,20 @@ Guidelines:
 
   if (userSummary) {
     prompt += `\n\nWhat you remember from past conversations with this person:\n${userSummary}`;
+  }
+
+  // Add story assignments with background info
+  if (storyAssignments && storyAssignments.length > 0) {
+    prompt += `\n\n--- Current Story Assignments ---\nYou are currently working on the following stories. Use this background information to ask informed questions when these topics come up:\n`;
+
+    for (const assignment of storyAssignments) {
+      prompt += `\n**${assignment.topic}**`;
+      if (assignment.backgroundInfo) {
+        prompt += `\nBackground information:\n${assignment.backgroundInfo}\n`;
+      } else {
+        prompt += `\n(No background information available)\n`;
+      }
+    }
   }
 
   return prompt;
