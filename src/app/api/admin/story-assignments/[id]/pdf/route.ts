@@ -4,9 +4,11 @@ import { CONFIG } from "@/lib/config";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-// Dynamic import for pdf-parse to handle CommonJS module
+// Use require for CommonJS pdf-parse module
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse");
+
 async function parsePdf(buffer: Buffer): Promise<string> {
-  const pdfParse = (await import("pdf-parse")).default;
   const data = await pdfParse(buffer);
   return data.text;
 }
