@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CONFIG } from "@/lib/config";
+import { extractText } from "unpdf";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-// Use require for CommonJS pdf-parse module
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
-
 async function parsePdf(buffer: Buffer): Promise<string> {
-  const data = await pdfParse(buffer);
-  return data.text;
+  const { text } = await extractText(buffer);
+  return text;
 }
 
 export async function POST(
